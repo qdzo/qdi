@@ -23,7 +23,7 @@ import ceylon.test {
     tag
 }
 
-Boolean loggingEnabled = false;
+Boolean loggingEnabled = true;
 void print(Anything val) {
     if(loggingEnabled) {
         ceylonPrint(val);
@@ -88,7 +88,29 @@ class Registry {
 
     MutableMap<Interface<>, Class<>>
     interfaceComponents = HashMap<Interface<>, Class<>> {};
-    
+
+    shared void inspect() {
+        print("---------------- REGISTRY INSPECTION -----------------");
+        printAll({
+            "interfaceComponents size: ``interfaceComponents.size``",
+            "components size: ``components.size``",
+            "parameters size: ``parameters.size``"
+        }, "\n");
+        if (!interfaceComponents.empty) {
+            print("--------------- interfacesComponenets ----------------");
+            printAll(interfaceComponents, "\n");
+        }
+        if (!components.empty) {
+            print("-------------------- components ----------------------");
+            printAll(components, "\n");
+        }
+        if (!parameters.empty) {
+            print("-------------------- parameters ----------------------");
+            printAll(parameters, "\n");
+        }
+        print("------------------------------------------------------");
+    }
+
     {<Type<>->Anything>*} normalize({<Type<>|<Type<> -> Anything>>*} comps) => {
         for (comp in comps)
         switch(comp)
@@ -146,7 +168,7 @@ class Registry {
             value instance = t.namedApply(params);
             print("Registry.tryToCreateInstance: instance created for type <``t``>");
             return instance;
-        } catch(Throwable th) {
+        } catch(Exception th) {
             value errorMsg = "Can't create instance: ``th.message``";
             print("Registry.tryToCreateInstance: ``errorMsg``");
             throw Exception(errorMsg);
@@ -208,7 +230,7 @@ class Registry {
                         try {
                             value depInstance = getInstance(decl);
                             return parameter.name -> depInstance;
-                        } catch (Throwable th) {
+                        } catch (Exception th) {
                             if(parameter.defaulted) {
                                 return null;
                             }
