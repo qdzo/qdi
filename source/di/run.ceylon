@@ -5,6 +5,9 @@ import ceylon.collection {
 import ceylon.language {
     ceylonPrint=print
 }
+import ceylon.language.meta {
+    type
+}
 import ceylon.language.meta.declaration {
     OpenClassOrInterfaceType,
     OpenClassType
@@ -152,6 +155,16 @@ class Registry {
         interfaceComponents.putAll(extractInterfacesFromClasses({t}));
     }
 
+    // TODO: new replacement for register method
+    shared void register2<T>(Class<T>|Object typeOrInstance) {
+        value [clazz, val] = switch (typeOrInstance)
+        case (is Class<>) [typeOrInstance, null]
+        else [type(typeOrInstance).declaration.classApply<Anything>(), typeOrInstance];
+        components.put(clazz, val);
+        print("Registry.register2: register " + (if(exists val) then "instance: <``val``> for " else "") + "type <``clazz``>");
+        interfaceComponents.putAll(extractInterfacesFromClasses({clazz}));
+    }
+
     T tryToCreateInstance<T>(Class<T> t) {
         try {
             print("Registry.tryToCreateInstance: class <``t``>");
@@ -176,7 +189,6 @@ class Registry {
     }
 
     T instantiateClass<T>(Class<T> t) {
-//        assert(is Class<T> t);
         if (components.defines(t)) {
             print("Registry.getInstance: components has registered type <``t``>");
             if (exists instance = components.get(t)) {
@@ -194,24 +206,16 @@ class Registry {
         throw Exception("There are no such type in Registry <``t``>");
     }
 
-    T findAndInstantiateClassForInterface<T>(Interface<T> t) {
-        if (exists satisfiedClass = interfaceComponents.get(t)) {
-            print("Registry.findAndInstantiateClassForInterface: has registered type for interface <``t``>");
-            value instance = instantiateClass(satisfiedClass);
-            assert (is T instance);
-            return instance;
-        }
-        print("Registry.findAndInstantiateClassForInterface: has not registred type for interface <``t``>");
-        throw Exception("There are no type in Registry for given interface <``t``>");
-    }
-
     shared T getInstance<T>(Type<T> t) {
         print("Registry.getInstance: for type <``t``>");
-        if(is Class<T> t) {
-            return instantiateClass(t);
+        if (is Interface<T> t) {
+            if(is Class<T> satisfiedClass = interfaceComponents.get(t)) {
+                print("Registry.getInstance: has registered type for interface <``t``>");
+                return instantiateClass(satisfiedClass);
+            }
         }
-        if(is Interface<T> t) {
-            return findAndInstantiateClassForInterface(t);
+        else if(is Class<T> t) {
+            return instantiateClass(t);
         }
         throw Exception("Type is not interface nor class: <``t``>");
     }
@@ -241,17 +245,13 @@ class Registry {
                 }
     ).coalesced;
 
-    {Parameter*} constructorParameters<T>(Type<T> t) {
-
-        assert(is Class<T> t);
+    {Parameter*} constructorParameters<T>(Class<T> t) {
         assert(exists parameterDeclarations
                 = t.defaultConstructor?.declaration?.parameterDeclarations);
-
-        {Parameter*} params = parameterDeclarations.map((e) {
+        return parameterDeclarations.map((e) {
             assert(is OpenClassOrInterfaceType openType = e.openType);
             return Parameter(e.name, openType, e.defaulted);
         });
-        return params;
     }
 }
 
@@ -275,7 +275,7 @@ class Registry {
 test
 shared void registryShouldRegisterType_whenRegisterCalled() {
     value registry = Registry();
-    registry.register(`Atom`);
+    registry.register2(`Atom`);
     assertIs(registry.getInstance(`Atom`), `Atom`);
 }
 
@@ -316,8 +316,8 @@ shared void registryShouldCreateInstance_ForTypeWithExplicitConstructorWithOnePa
 test
 shared void registryShouldCreateInstance_WithOneRegisteredDependencyType() {
     value registry = Registry();
-    registry.register(`Atom`);
-    registry.register(`Box`);
+    registry.register2(`Atom`);
+    registry.register2(`Box`);
     value box = registry.getInstance(`Box`);
     assertIs(box, `Box`);
 }
@@ -325,7 +325,8 @@ shared void registryShouldCreateInstance_WithOneRegisteredDependencyType() {
 test
 shared void registryShouldRegisterTypeWithInstanceInRegisterMethodCalled() {
     value registry = Registry();
-    registry.register(`Box`, Box(Atom()));
+//    registry.register(`Box`, Box(Atom()));
+    registry.register2(Box(Atom()));
     value box = registry.getInstance(`Box`);
     assertIs(box, `Box`);
 }
@@ -366,6 +367,8 @@ shared void registryShouldCreateInstanceWithDefaultParameter() {
     value registry = Registry {`Box2`};
     assertIs(registry.getInstance(`Box2`), `Box2`);
 }
+
+// --------------------------------------------------------------------------
 
 interface Postman { }
 class RuPostman() satisfies Postman { }
