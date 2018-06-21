@@ -1,0 +1,443 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="Generic Ant Project" basedir="." default="help"
+         xmlns:if="ant:if" xmlns:unless="ant:unless">
+
+    <!-- Create project-name relative to basedir -->
+    <basename property="project.name" file="${basedir}"/>
+
+    <!--  START CEYLON SETUP -->
+    <condition property="batExt" value=".bat">
+        <os family="windows" />
+    </condition>
+    <property name="batExt" value=""/>
+    <exec executable="ceylon${batExt}" outputproperty="ceylon.home" failifexecutionfails="false">
+        <arg value="--show-home" />
+    </exec>
+    <property environment="env"/>
+    <condition property="ceylon.home" value="${env.CEYLON_HOME}"
+               else="${user.home}/.sdkman/candidates/ceylon/current">
+        <isset property="env.CEYLON_HOME" />
+    </condition>
+    <property name="ceylon.ant.lib" value="${ceylon.home}/lib/ceylon-ant.jar" />
+    <property name="source.encoding" value="UTF-8"/>
+    <!--  END CEYLON SETUP -->
+
+    <target name="help" description="Print ant projecthelp target">
+      <java classname="org.apache.tools.ant.Main">
+        <arg value="-projecthelp" />
+      </java>
+    </target>
+
+    <!-- init ant libraries,
+         including ceylon tasks, ant-contrib tasks and vizant task. -->
+    <target name="-init-ant-lib">
+      <!-- ceylon-specific ant tasks -->
+      <path id="ant-tasks">
+        <pathelement location="${ceylon.ant.lib}"/>
+      </path>
+      <typedef resource="com/redhat/ceylon/ant/antlib.xml" classpathref="ant-tasks"/>
+
+      <!--user ant-libs should be here -->
+      <property name="user.ant.lib" value="${user.home}/.ant/lib"/>
+      <mkdir dir="${user.ant.lib}"/>
+
+      <!--ant-contrib library-->
+      <property name="lib.ant-contrib.file" value="ant-contrib-1.0b3.jar"/>
+      <property name="lib.ant-contrib.path" value="${user.ant.lib}/${lib.ant-contrib.file}"/>
+      <available file="${lib.ant-contrib.path}" property="lib.ant-contrib.present"/>
+      <!--define tasks if lib exists-->
+      <taskdef resource="net/sf/antcontrib/antlib.xml"
+               classpath="lib.ant-contrib.path" if:set="lib.ant-contrib.present"/>
+
+      <!--vizant lib. needed for generating target dependency graph-->
+      <property name="lib.vizant.file" value="vizant-0.1.2.jar"/>
+      <property name="lib.vizant.path" value="${user.ant.lib}/${lib.vizant.file}"/>
+      <available file="${lib.vizant.path}" property="lib.vizant.present"/>
+      <!--define tasks if lib exists-->
+      <taskdef name="vizant" classname="net.sourceforge.vizant.Vizant"
+               classpath="${lib.vizant.path}" if:set="lib.vizant.present"/>
+    </target>
+    
+
+    <!--configure proxy if it enabled in system-->
+    <target name="-init-proxy">
+        <condition property="proxy.enabled"><isset property="env.http_proxy"/></condition>
+        <script language="javascript" if:set="proxy.enabled">
+            var proxyHostPortPair = project.getProperty("env.http_proxy")
+            .replace(/https?:\/\/(.*[^:]):([0-9]+[^\/])\/?/, "$1:$2").split(":");
+            project.setProperty("proxy.host", proxyHostPortPair[0]);
+            project.setProperty("proxy.port", proxyHostPortPair[1]);
+        </script>
+        <setproxy proxyhost="${proxy.host}" proxyport="${proxy.port}" if:set="proxy.enabled"/>
+    </target>
+
+
+    <!--inits project properties-->
+    <target name="-init" depends="-init-ant-lib" unless="init.already">
+
+        <!-- LOAD PROPERTIES FROM FILE for specific environment. (test, stage, prod, etc..)-->
+        <property file="${env.PROFILE}.properties" />
+        <echo message="--- Load '${env.PROFILE}' build profile  ---" if:set="env.PROFILE"/>
+
+        <!-- LOAD PROPERTIES FROM FILE (all project specific properties should be here-->
+        <property name="build.properties.file" value="build.properties" />
+        <property file="${build.properties.file}" />
+
+        <!-- source dirs setup -->
+        <property name="source.dir" value="./source"/>
+        <property name="testsource.dir" value="./test"/>
+        <property name="source.dirs" value="${source.dir}${path.separator}${testsource.dir}"/>
+        <moduleset id="full.moduleset">
+            <sourcemodules/>
+            <sourcemodules dir="./test"/>
+        </moduleset>
+
+        <!-- repositories setup -->
+        <property name="user.repo" location="${user.home}/.ceylon/repo"/>
+        <property name="out.repo" location="modules" relative="true"/>
+        <reposet id="local.reposet">
+            <repo url="${out.repo}"/>
+        </reposet>
+
+
+        <!-- set init flag -->
+        <property name="init.already" value="true"/>
+    </target>
+
+
+    <target name="fetch" description="Fetches changes from remote repository">
+        <echo level="verbose">Fetching changes from repository</echo>
+        <exec executable="git" failonerror="false">
+            <arg value="pull"/>
+        </exec>
+        <echo level="verbose">Done</echo>
+    </target>
+
+
+    <!-- finds changed modules and put to them build.info files in resource dir.
+         build info files contains:
+         1) timestamp
+         2) git revision number
+         3) git diff of current repo state and last commit
+    -->
+    <target name="-create-build-info" depends="-init">
+      <echo level="verbose">Generating build info</echo>
+      <!--create timestamp-->
+      <tstamp>
+        <format property="timestamp" pattern="YYYY-MM-dd'T'HH:mm:ss.SSS Z"/>
+      </tstamp>
+      
+      <!--get git revision -->
+      <exec executable="git" outputproperty="git.rev">
+        <arg value="rev-parse"/>
+        <arg value="HEAD"/>
+      </exec>
+
+      <!-- get git-diff between commit and current repo state -->
+      <exec executable="bash" outputproperty="git.diff">
+        <arg value="-c"/>
+        <arg value="git diff --stat | tail -n1 "/>
+      </exec>
+
+      <!--define build.info -->
+      <property name="build.info"
+       value="snapshot=${timestamp}${line.separator}revision=${git.rev}${line.separator}diff=${git.diff}"/>
+
+      <echo level="verbose">build.info: ${build.info}</echo>
+
+      <!-- find all module paths in source dir-->
+      <echo level="verbose">Finding module sources</echo>
+      <pathconvert property="module.path">
+        <fileset dir="source" includes="**/module.ceylon"/>
+        <globmapper from="${basedir}/source/*/module.ceylon" to="*"/>
+      </pathconvert>
+
+      <!-- check if there are need to compile modules and create build.info file if so. -->
+      <echo level="verbose">Cheching module for changes and write build.info to them</echo>
+      <for param="module.dir" list="${module.path}" delimiter=":">
+        <sequential>
+          <!-- properties are immutable, 'local' makes them mutable -->
+          <local name="car.dir.present"/>
+          <local name="module.car.present"/>
+          <local name="is.car.actual"/>
+          <local name="build.info.needed"/>
+
+          <available file="modules/@{module.dir}" property="car.dir.present"/>
+
+          <!-- NOTE may be collisions if in modules dir one module have several versions. -->
+          <first id="module.car" if:set="car.dir.present">
+            <fileset dir="modules/@{module.dir}"
+                     includes="**/*.car"/>
+          </first>
+
+          <available file="${toString:module.car}" property="module.car.present"
+                    if:set="car.dir.present" />
+
+            <!-- check is sources more recent than compiled archive -->
+            <uptodate property="is.car.actual"
+                      targetfile="${toString:module.car}"
+                      if:set="module.car.present">
+                <srcfiles dir="source/@{module.dir}" includes="*"/>
+            </uptodate>
+
+            <condition property="build.info.needed" value="true" else="false">
+                <or>
+                    <not><isset property="is.car.actual"/></not>
+                    <isfalse value="${is.car.actual}"/>
+                </or>
+            </condition>
+
+            <!-- write build info to file if source changed -->
+            <echo message="Module '@{module.dir}' changed: writing 'build.info' file"
+                  if:true="${build.info.needed}"/>
+
+            <echo message="${build.info}"
+                  file="resource/@{module.dir}/build.info"
+                  if:true="${build.info.needed}"/>
+
+            <property name="build.info.created" value="true"
+                      if:true="${build.info.needed}"/>
+
+        </sequential>
+      </for>
+
+        <echo level="verbose">Done</echo>
+    </target>
+
+
+    <target name="-delete-build-info">
+        <echo level="verbose">Delete build info files</echo>
+        <delete  verbose="${verbose-output}">
+            <fileset dir="resource" includes="**/build.info"/>
+        </delete>
+        <echo level="verbose">Done</echo>
+    </target>
+
+
+    <!-- CODE TASKS -->
+
+    <target name="compile" depends="-init">
+        <antcall target="-create-build-info"/>
+        <ceylon-compile encoding="${source.encoding}" src="${source.dir}">
+            <reposet refid="local.reposet"/>
+            <moduleset>
+                <sourcemodules/>
+            </moduleset>
+        </ceylon-compile>
+        <antcall target="-delete-build-info"/>
+    </target>
+
+
+    <target name="compile-tests" depends="-init"
+      description="Compile tests sources">
+      <ceylon-compile encoding="${source.encoding}" src="${testsource.dir}">
+        <reposet refid="local.reposet"/>
+        <moduleset>
+          <sourcemodules dir="${testsource.dir}"/>
+        </moduleset>
+      </ceylon-compile>
+    </target>
+
+    <!--Compiles all modules, including tests -->
+    <target name="compile-all" depends="compile, compile-tests"
+      description="Compiles sources and tests">
+    </target>
+
+    <target name="test" depends="compile-all"
+    description="Runs test on modules, specified in build.properties file">
+        <exec executable="ceylon" failonerror="true">
+            <arg line="test --rep=${out.repo} ${test.module.names}"/>
+        </exec>
+    </target>
+
+    
+    <target name="doc" depends="-init">
+        <ceylon-doc encoding="${source.encoding}">
+            <sourcemodules/>
+        </ceylon-doc>
+    </target>
+
+
+    <target name="run" depends="compile">
+        <condition property="run.module" value="${module}" else="${run.module.name}/${run.module.version}">
+            <isset property="module"/>
+        </condition>
+        <ceylon-run module="${run.module}">
+            <reposet refid="local.reposet"/>
+        </ceylon-run>
+    </target>
+
+
+    <target name="clean"
+            description="Cleans project from artifacts and dependencies dir">
+        <echo>Deleting compiled modules</echo>
+        <delete dir="${out.repo}"/>
+        <echo>Done</echo>
+    </target>
+
+
+
+    <target name="install" depends="compile" description="Publishes modules to ceylon user-repo">
+        <echo>Publishing compiled modules to ${user.repo} repository</echo>
+        <ceylon-compile out="${user.repo}">
+            <sourcemodules/>
+        </ceylon-compile>
+        <echo>Installation completed</echo>
+    </target>
+
+
+    <target name="fat-jar" depends="compile" description="Generates fat-jar">
+        <echo>Generating fat-jar for module: ${run.module.name}</echo>
+        <condition property="assemble" value="${out}" else="${run.module.name}-${run.module.version}.jar">
+            <isset property="out"/>
+        </condition>
+        <exec executable="ceylon" failonerror="true">
+            <arg value="fat-jar"/>
+            <arg value="--rep"/>
+            <arg value="./modules"/>
+            <arg value="--force"/>
+            <arg value="--out"/>
+            <arg value="${assemble}"/>
+            <arg value="${run.module.name}/${run.module.version}"/>
+        </exec>
+        <property name="assemble-path" location="${assemble}"/>
+        <echo>Complete: ${assemble-path}</echo>
+    </target>
+
+
+    <target name="assemble" depends="compile" description="Generates ceylon assemble file (.cas)">
+        <echo>Generating ceylon assemble for module: ${run.module.name}</echo>
+        <condition property="assemble" value="${out}" else="${run.module.name}-${run.module.version}.cas">
+            <isset property="out"/>
+        </condition>
+        <exec executable="ceylon" failonerror="true">
+            <arg value="fat-jar"/>
+            <arg value="./modules"/>
+            <arg value="--out"/>
+            <arg value="${assemble}"/>
+            <arg value="${run.module.name}/${run.module.version}"/>
+        </exec>
+        <property name="assemble-path" location="${assemble}"/>
+        <echo>Complete: ${assemble-path}</echo>
+    </target>
+
+
+    <target name="all-quick" description="Runs full cycle(without clean)">
+        <antcall target="fetch"/>
+        <antcall target="compile"/>
+    </target>
+
+
+    <target name="all"
+    description="Runs full cycle(clean/fetch/compile)">
+        <antcall target="clean"/>
+        <antcall target="all-quick"/>
+    </target>
+
+
+    <target name="setup-ant" depends="-init, -init-proxy">
+        <!--INSTALL ANT-CONTRIB LIBRARY-->
+        <property name="lib.ant-contrib.distrib" value="ant-contrib-1.0b3-bin.zip"/>
+
+        <!--download and unzip it if not exists-->
+        <get src="https://netix.dl.sourceforge.net/project/ant-contrib/ant-contrib/1.0b3/${lib.ant-contrib.distrib}"
+             skipexisting="true"
+             ignoreerrors="false"
+             dest="${lib.ant-contrib.distrib}"
+             unless:set="lib.ant-contrib.present"/>
+        <unzip src="${lib.ant-contrib.distrib}" dest="${user.ant.lib}" unless:set="lib.ant-contrib.present">
+            <patternset includes="**/${lib.ant-contrib.file}"/>
+            <flattenmapper/>
+        </unzip>
+        
+        <!--download lib to ant lib dir -->
+        <get src="https://netix.dl.sourceforge.net/project/vizant/Vizant%20Latest%20Jar/0.1.2/${lib.vizant.file}"
+             skipexisting="true"
+             ignoreerrors="false"
+             dest="${lib.vizant.path}"
+             unless:set="lib.vizant.present"/>
+    </target>
+
+
+    <target name="setup-project" depends="-init"
+            description="Creates build properties file configured for project">
+        
+        <echo>Checking project for setup</echo>
+
+        <!--Checking build.properties existence in project dir-->
+        <available file="${build.properties.file}" property="build.properties.present"/>
+        <fail message="Build properties file already present. I can't override it"
+              if:set="build.properties.present"/>
+
+        <!-- ant property -->
+        <property name="verbose-output" value="true"/>
+
+        <!-- guess run module -->
+        <echo>Searching main module</echo>
+        <first id="run.path">
+            <fileset dir="${source.dir}" includes="**/run.ceylon"/>
+        </first>
+        <property name="run.file" location="${toString:run.path}" relative="true" basedir="${source.dir}"/>
+        <script language="javascript">
+            var runModule = project.getProperty("run.file")
+            .replace("/run.ceylon","").replaceAll("/",".");
+            project.setProperty("guess.run.module", runModule);
+        </script>
+        <property name="run.module.name" value="${guess.run.module}"/>
+        <property name="run.module.version" value="1.0.0"/>
+
+        <!-- find test modules -->
+        <echo>Searching test modules</echo>
+        <pathconvert property="test.path">
+            <fileset dir="${testsource.dir}" includes="**/*test*/**/module.ceylon"/>
+            <globmapper from="${basedir}/source/*/module.ceylon" to="*"/>
+        </pathconvert>
+        <script language="javascript">
+            var testModules = project
+            .getProperty("test.path")
+            .replaceAll("/", ".")
+            .replaceAll(":", " ")
+            project.setProperty("guess.test.module.names", testModules);
+        </script>
+        <property name="test.module.names" value="${guess.test.module.names}"/>
+
+
+        <!--write properties to file-->
+        <echo>Creating ${build.properties.file} file</echo>
+        <echoproperties destfile="${build.properties.file}">
+            <propertyset>
+                <propertyref prefix="run.module."/>
+                <propertyref prefix="test.module.names"/>
+                <propertyref prefix="verbose-output"/>
+            </propertyset>
+        </echoproperties>
+        <echo>Done</echo>
+    </target>
+    
+
+    <target name="setup" depends="setup-ant, setup-project"
+            description="Setup ant and project">
+    </target>
+
+
+    <!--generating ant target dependency graph-->
+    <target name="target-graph" depends="-init">
+        <!--check if grapviz installed-->
+        <available file="dot" filepath="${env.PATH}" property="dot.executable.present"/>
+        <fail message="You haven't graphViz application installed" unless="dot.executable.present"/>
+
+        <property name="build.graph.pic" value="target-graph.png"/>
+        
+        <!-- build graph -->
+        <echo>Generating ${build.graph.pic}</echo>
+        <vizant antfile="build.xml" outfile="build.dot"/>
+        <exec executable="dot" failonerror="true">
+            <arg line="-Tpng build.dot -o ${build.graph.pic}"/>
+        </exec>
+
+        <!--clean from intermediate generated *.dot file-->
+        <delete file="build.dot" verbose="false"/>
+        <echo>Build-graph picture created: ${build.graph.pic}</echo>
+    </target>
+
+</project>
