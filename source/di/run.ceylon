@@ -16,7 +16,14 @@ import ceylon.test {
     assertEquals,
     assertThatException
 }
+import ceylon.language { ceylonPrint = print }
 
+Boolean loggingEnabled = false;
+void print(Anything val) {
+    if(loggingEnabled) {
+        ceylonPrint(val);
+    }
+}
 // ----------------------------------------------------
 
 class Person(shared String name, shared Integer age)  {
@@ -66,18 +73,30 @@ class Matryoshka0()  {
 }
 // ----------------------------------------------------
 
-class Registry() {
+class Registry {
+
+    MutableMap<[Type<>, String],Anything>
+    parameters = HashMap<[Type<>, String], Anything> {};
+
+    MutableMap<Type<>, Anything>
+    container = HashMap<Type<>,Anything> {};
+
+    shared new({<Type<>|<Type<> -> Anything>>*} initial = empty) {
+        container.putAll(
+            {
+                for (element in initial)
+                switch(element)
+                case(is Type<Anything>) element -> null
+                else element
+            }
+        );
+    }
 
     class Parameter(
             shared String name,
             shared OpenClassOrInterfaceType type,
             shared Boolean defaulted
             )  { }
-
-    MutableMap<[Type<>, String],Anything>
-    parameters = HashMap<[Type<>, String], Anything> {};
-
-    MutableMap<Type<>, Anything> container = HashMap<Type<>,Anything> {};
 
     shared void registerParameter<T>(Class<T> t, String param, Anything val) {
         print("Registry.registerParameter: for type <``t``>, name: <``param``>, val: <``val else "null"``>");
@@ -187,9 +206,15 @@ class Registry() {
 //}
 
 test
-shared void registryShouldCreateInstanceForTypeWithoutDependencies() {
+shared void emptyRegistry_ShouldRegisterAndCreateInstanceForTypeWithoutDependencies_WhenRegisterAndGetInstanceCalled() {
     value registry = Registry();
     registry.register(`Atom`);
+    assertIs(registry.getInstance(`Atom`), `Atom`);
+}
+
+test
+shared void oneItemRegistry_ShouldRegisterAndCreateInstanceForTypeWithoutDependencies_WhenGetInstanceCalled() {
+    value registry = Registry {`Atom`};
     assertIs(registry.getInstance(`Atom`), `Atom`);
 }
 
@@ -220,18 +245,23 @@ shared void registryShouldCreateInstanceWithOneRegisteredDependencyType() {
 }
 
 test
-shared void registryShouldReturnRegisteredTypeWithInstance() {
+shared void registryShouldRegisterTypeWithInstanceInRegisterMethodCalled() {
     value registry = Registry();
     registry.register(`Box`, Box(Atom()));
     value box = registry.getInstance(`Box`);
     assertIs(box, `Box`);
 }
 
+test
+shared void registryShouldRegisterTypeWithInstanceInConstuctor() {
+    value registry = Registry {`Box`-> Box(Atom())};
+    value box = registry.getInstance(`Box`);
+    assertIs(box, `Box`);
+}
 
 test
 shared void registryShouldCreateInstanceWithSomeSimpleParameters() {
-    value registry = Registry();
-    registry.register(`Person`);
+    value registry = Registry { `Person` };
     registry.registerParameter(`Person`, "name", "Vika");
     registry.registerParameter(`Person`, "age", 18);
     value person = registry.getInstance(`Person`);
@@ -242,27 +272,21 @@ shared void registryShouldCreateInstanceWithSomeSimpleParameters() {
 
 test
 shared void registryShouldThrowExceptinWhenThereAreNoSomeParameters() {
-    value registry = Registry();
-    registry.register(`Person`);
+    value registry = Registry { `Person` };
     registry.registerParameter(`Person`, "age", 18);
     assertThatException(() => registry.getInstance(`Person`));
 }
 
 test
 shared void registryShouldCreateDeeplyNestedInstances() {
-    value registry = Registry();
-    registry.register(`Matryoshka0`);
-    registry.register(`Matryoshka1`);
-    registry.register(`Matryoshka2`);
-    registry.register(`Matryoshka3`);
+    value registry = Registry { `Matryoshka0`, `Matryoshka1`, `Matryoshka2`, `Matryoshka3` };
     value box = registry.getInstance(`Matryoshka1`);
     assertIs(box, `Matryoshka1`);
 }
 
 test
 shared void registryShouldCreateInstanceWithItsDefaultParameter() {
-    value registry = Registry();
-    registry.register(`Box2`);
-    value box = registry.getInstance(`Box2`);
-    assertIs(box, `Box2`);
+    value registry = Registry {`Box`, `Atom`};
+    value box = registry.getInstance(`Box`);
+    assertIs(box, `Box`);
 }
