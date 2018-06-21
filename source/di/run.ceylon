@@ -2,21 +2,26 @@ import ceylon.collection {
     MutableMap,
     HashMap
 }
+import ceylon.language {
+    ceylonPrint=print
+}
 import ceylon.language.meta.declaration {
     OpenClassOrInterfaceType,
     OpenClassType
 }
 import ceylon.language.meta.model {
     Type,
-    Class
+    Class,
+    Interface,
+    InterfaceModel
 }
 import ceylon.test {
     test,
     assertIs,
     assertEquals,
-    assertThatException
+    assertThatException,
+    tag
 }
-import ceylon.language { ceylonPrint = print }
 
 Boolean loggingEnabled = false;
 void print(Anything val) {
@@ -79,18 +84,34 @@ class Registry {
     parameters = HashMap<[Type<>, String], Anything> {};
 
     MutableMap<Type<>, Anything>
-    container = HashMap<Type<>,Anything> {};
+    components = HashMap<Type<>,Anything> {};
 
-    shared new({<Type<>|<Type<> -> Anything>>*} initial = empty) {
-        container.putAll(
-            {
-                for (element in initial)
-                switch(element)
-                case(is Type<Anything>) element -> null
-                else element
-            }
-        );
+    MutableMap<Interface<>, Class<>>
+    interfaceComponents = HashMap<Interface<>, Class<>> {};
+    
+    {<Type<>->Anything>*} normalize({<Type<>|<Type<> -> Anything>>*} comps) => {
+        for (comp in comps)
+        switch(comp)
+        case(is Type<Anything>) comp -> null
+        else comp
+    };
+
+    {<Interface<>->Class<>>*} extractInterfacesFromClasses({Type<>*} types) => {
+        for (clazz in types)
+        if(is Class<> clazz, nonempty interfaces = clazz.satisfiedTypes)
+        interfaces.map((InterfaceModel<> iface) => iface.declaration.interfaceApply<Anything>() -> clazz)
+    }.flatMap(identity);
+
+    shared new(
+            {<Type<>|<Type<> -> Anything>>*} components = empty,
+            {[Type<>, String, Anything]*} parameters = empty) {
+
+        value normalized = normalize(components);
+        this.components.putAll(normalized);
+        this.interfaceComponents.putAll(extractInterfacesFromClasses(normalized.map(Entry.key)));
+        this.parameters.putAll({ for ([type, paramName, val] in parameters) [type, paramName] -> val });
     }
+
 
     class Parameter(
             shared String name,
@@ -105,7 +126,8 @@ class Registry {
 
     shared void register<T>(Type<T> t, T? val = null) {
         print("Registry.register: register type: <``t``> with val: <``val else "null"``>");
-        container.put(t, val);
+        components.put(t, val);
+        interfaceComponents.putAll(extractInterfacesFromClasses({t}));
     }
 
     T tryToCreateInstance<T>(Class<T> t) {
@@ -131,24 +153,45 @@ class Registry {
         }
     }
 
-    shared T getInstance<T>(Type<T> t) {
-        print("Registry.getInstance: for type <``t``>");
-        assert(is Class<T> t);
-        if (container.defines(t)) {
-            print("Registry.getInstance: container has registered type <``t``>");
-            if (exists instance = container.get(t)) {
-                print("Registry.getInstance: container has instance for type <``t``>");
+    T instantiateClass<T>(Class<T> t) {
+//        assert(is Class<T> t);
+        if (components.defines(t)) {
+            print("Registry.getInstance: components has registered type <``t``>");
+            if (exists instance = components.get(t)) {
+                print("Registry.getInstance: components has instance for type <``t``>");
                 assert (is T instance);
                 return instance;
             } else {
-                print("Registry.getInstance: container has not instance for type <``t``>");
+                print("Registry.getInstance: components has not instance for type <``t``>");
                 value instance = tryToCreateInstance(t);
-                container.put(t, instance);
+                components.put(t, instance);
                 return instance;
             }
         }
-        print("Registry.getInstance: container has not registered type ``t``");
+        print("Registry.getInstance: components has not registered type ``t``");
         throw Exception("There are no such type in Registry <``t``>");
+    }
+
+    T findAndInstantiateClassForInterface<T>(Interface<T> t) {
+        if (exists satisfiedClass = interfaceComponents.get(t)) {
+            print("Registry.findAndInstantiateClassForInterface: has registered type for interface <``t``>");
+            value instance = instantiateClass(satisfiedClass);
+            assert (is T instance);
+            return instance;
+        }
+        print("Registry.findAndInstantiateClassForInterface: has not registred type for interface <``t``>");
+        throw Exception("There are no type in Registry for given interface <``t``>");
+    }
+
+    shared T getInstance<T>(Type<T> t) {
+        print("Registry.getInstance: for type <``t``>");
+        if(is Class<T> t) {
+            return instantiateClass(t);
+        }
+        if(is Interface<T> t) {
+            return findAndInstantiateClassForInterface(t);
+        }
+        throw Exception("Type is not interface nor class: <``t``>");
     }
 
     {<String->Anything>*}
@@ -158,8 +201,10 @@ class Registry {
                     if(exists paramVal = parameters[[t, parameter.name]]) {
                         return parameter.name -> paramVal;
                     } else {
-                        assert(is OpenClassType item = parameter.type);
-                        value decl = item.declaration.classApply<Anything>();
+                        value paramType = parameter.type;
+                        value decl = if(is OpenClassType paramType)
+                                     then paramType.declaration.classApply<Anything>()
+                                     else paramType.declaration.interfaceApply<Anything>();
                         try {
                             value depInstance = getInstance(decl);
                             return parameter.name -> depInstance;
@@ -206,37 +251,48 @@ class Registry {
 //}
 
 test
-shared void emptyRegistry_ShouldRegisterAndCreateInstanceForTypeWithoutDependencies_WhenRegisterAndGetInstanceCalled() {
+shared void registryShouldRegisterType_whenRegisterCalled() {
     value registry = Registry();
     registry.register(`Atom`);
     assertIs(registry.getInstance(`Atom`), `Atom`);
 }
 
 test
-shared void oneItemRegistry_ShouldRegisterAndCreateInstanceForTypeWithoutDependencies_WhenGetInstanceCalled() {
+shared void registryShouldRegisterType_whenRegistryInitiatedWithParams() {
     value registry = Registry {`Atom`};
     assertIs(registry.getInstance(`Atom`), `Atom`);
 }
 
 test
-shared void registryShouldCreateInstanceForTypeWithExplicitConstructorWithoutParameters() {
-    value registry = Registry();
-    registry.register(`Atom1`);
+shared void registryShouldRegisterParams_whenRegistryInitiatedWithParams() {
+    value registry = Registry {
+        components = {`Box`};
+        parameters = {[`Box`, "atom", Atom()]};
+    };
+    assertIs(registry.getInstance(`Box`), `Box`);
+}
+
+test
+shared void registryShouldCreateInstance_ForTypeWithoutParameters() {
+    value registry = Registry {`Atom`};
+    assertIs(registry.getInstance(`Atom`), `Atom`);
+}
+
+test
+shared void registryShouldCreateInstance_ForTypeWithExplicitConstructorWithoutParameters() {
+    value registry = Registry {`Atom1`};
     assertIs(registry.getInstance(`Atom1`), `Atom1`);
 }
 
 
 test
-shared void registryShouldCreateInstanceForTypeWithExplicitConstructorWithOneParameter() {
-    value registry = Registry();
-    registry.register(`Atom`);
-    registry.register(`Box1`);
-    value box = registry.getInstance(`Box1`);
-    assertIs(box, `Box1`);
+shared void registryShouldCreateInstance_ForTypeWithExplicitConstructorWithOneParameter() {
+    value registry = Registry {`Atom`, `Box1`};
+    assertIs(registry.getInstance(`Box1`), `Box1`);
 }
 
 test
-shared void registryShouldCreateInstanceWithOneRegisteredDependencyType() {
+shared void registryShouldCreateInstance_WithOneRegisteredDependencyType() {
     value registry = Registry();
     registry.register(`Atom`);
     registry.register(`Box`);
@@ -280,13 +336,41 @@ shared void registryShouldThrowExceptinWhenThereAreNoSomeParameters() {
 test
 shared void registryShouldCreateDeeplyNestedInstances() {
     value registry = Registry { `Matryoshka0`, `Matryoshka1`, `Matryoshka2`, `Matryoshka3` };
-    value box = registry.getInstance(`Matryoshka1`);
-    assertIs(box, `Matryoshka1`);
+    assertIs(registry.getInstance(`Matryoshka1`), `Matryoshka1`);
 }
 
 test
-shared void registryShouldCreateInstanceWithItsDefaultParameter() {
-    value registry = Registry {`Box`, `Atom`};
-    value box = registry.getInstance(`Box`);
-    assertIs(box, `Box`);
+shared void registryShouldCreateInstanceWithDefaultParameter() {
+    value registry = Registry {`Box2`};
+    assertIs(registry.getInstance(`Box2`), `Box2`);
+}
+
+interface Postman { }
+class RuPostman() satisfies Postman { }
+class AsiaPostman() satisfies Postman { }
+class RuPostal(shared Postman postman)  { }
+class AsiaPostal(shared Postman postman = AsiaPostman())  { }
+
+tag("if")
+test
+shared void registryShouldCreateInstanceWithInterfaceDependency() {
+    value registry = Registry {`RuPostman`, `RuPostal`};
+    value postal = registry.getInstance(`RuPostal`);
+    assertIs(postal, `RuPostal`);
+    assertIs(postal.postman, `RuPostman`);
+}
+
+tag("if")
+test
+shared void registryShouldCreateInstanceForGivenInterface() {
+    value registry = Registry {`RuPostman`};
+    value postman = registry.getInstance(`Postman`);
+    assertIs(postman, `RuPostman`);
+}
+
+tag("if")
+test
+shared void registryShouldCreateInstanceForGivenInterfaceWithItsDefaultParameter() {
+    value registry = Registry {`AsiaPostal`};
+    assertIs(registry.getInstance(`AsiaPostal`), `AsiaPostal`);
 }
