@@ -15,8 +15,7 @@ import ceylon.language.meta.declaration {
 import ceylon.language.meta.model {
     Type,
     Class,
-    Interface,
-    InterfaceModel
+    Interface
 }
 import ceylon.test {
     test,
@@ -36,11 +35,28 @@ void print(Anything val) {
 
 class Registry {
 
+//    class RegistryState(
+//            shared Map<[Type<>, String],Anything> parameters = emptyMap,
+//            shared Map<Type<>, Anything> components = emptyMap,
+//            shared Map<Interface<>, Class<>> interfaceComponents = emptyMap)  {
+//
+//        shared RegistryState with(
+//                Map<[Type<>, String], Anything> parameters = this.parameters,
+//                Map<Type<>, Anything> components = this.components,
+//                Map<Interface<>, Class<>> interfaceComponents = this.interfaceComponents
+//                )  => RegistryState(parameters, components, interfaceComponents);
+//
+//    }
+
+
     MutableMap<[Type<>, String],Anything>
     parameters = HashMap<[Type<>, String], Anything> {};
 
     MutableMap<Type<>, Anything>
     components = HashMap<Type<>,Anything> {};
+
+    MutableMap<Type<>, Class<>>
+    extendComponents = HashMap<Type<>, Class<>> {};
 
     MutableMap<Interface<>, Class<>>
     interfaceComponents = HashMap<Interface<>, Class<>> {};
@@ -67,27 +83,28 @@ class Registry {
         print("------------------------------------------------------");
     }
 
-    {<Type<>->Anything>*} normalize({<Type<>|<Type<> -> Anything>>*} comps) => {
-        for (comp in comps)
-        switch(comp)
-        case(is Type<Anything>) comp -> null
-        else comp
-    };
-
-    {<Interface<>->Class<>>*} extractInterfacesFromClasses({Type<>*} types) => {
-        for (clazz in types)
-        if(is Class<> clazz, nonempty interfaces = clazz.satisfiedTypes)
-        interfaces.map((InterfaceModel<> iface) => iface.declaration.interfaceApply<Anything>() -> clazz)
-    }.flatMap(identity);
-
     shared new(
-            {<Type<>|<Type<> -> Anything>>*} components = empty,
+            {Class<>|Object*} components = empty,
             {[Type<>, String, Anything]*} parameters = empty) {
 
-        value normalized = normalize(components);
-        this.components.putAll(normalized);
-        this.interfaceComponents.putAll(extractInterfacesFromClasses(normalized.map(Entry.key)));
-        this.parameters.putAll({ for ([type, paramName, val] in parameters) [type, paramName] -> val });
+        value described = components.map(describeComponent);
+        this.components.putAll {
+            for ([inst, clazz, *_] in described)
+            clazz -> inst
+        };
+        this.extendComponents.putAll {
+            for ([_, clazz, extClazz, __] in described)
+            extClazz -> clazz
+        };
+        this.interfaceComponents.putAll {
+            for ([_, clazz, __, ifaces] in described)
+            for (iface in ifaces)
+            iface -> clazz
+        };
+        this.parameters.putAll {
+            for ([type, paramName, val] in parameters)
+            [type, paramName] -> val
+        };
     }
 
 
@@ -102,20 +119,12 @@ class Registry {
         parameters.put([t, param], val);
     }
 
-    shared void register<T>(Type<T> t, T? val = null) {
-        print("Registry.register: register type: <``t``> with val: <``val else "null"``>");
-        components.put(t, val);
-        interfaceComponents.putAll(extractInterfacesFromClasses({t}));
-    }
-
-    // TODO: new replacement for register method
-    shared void register2<T>(Class<T>|Object typeOrInstance) {
-        value [clazz, val] = switch (typeOrInstance)
-        case (is Class<>) [typeOrInstance, null]
-        else [type(typeOrInstance).declaration.classApply<Anything>(), typeOrInstance];
-        components.put(clazz, val);
-        print("Registry.register2: register " + (if(exists val) then "instance: <``val``> for " else "") + "type <``clazz``>");
-        interfaceComponents.putAll(extractInterfacesFromClasses({clazz}));
+    shared void register<T>(Class<T>|Object typeOrInstance) {
+        value [inst, clazz, extClazz, ifaces] = describeComponent(typeOrInstance);
+        components.put(clazz, inst);
+        extendComponents.put(extClazz, clazz);
+        print("Registry.register2: register " + (if(exists inst) then "instance: <``inst``> for " else "") + "type <``clazz``>");
+        interfaceComponents.putAll { for (iface in ifaces) iface -> clazz };
     }
 
     T tryToCreateInstance<T>(Class<T> t) {
@@ -154,6 +163,10 @@ class Registry {
                 components.put(t, instance);
                 return instance;
             }
+        } else if (exists tt = extendComponents[t]) {
+            value instance = instantiateClass(tt);
+            assert (is T instance);
+            return instance;
         }
         print("Registry.getInstance: components has not registered type ``t``");
         throw Exception("There are no such type in Registry <``t``>");
@@ -209,7 +222,7 @@ class Registry {
 }
 
 // TODO move to reflectionTools.ceylon file
-[Class<T>, Class<Anything>, [Interface<>*]]
+[Class<T>, Class<Anything>, [Interface<Anything>*]]
 describeClass<T>(Class<T> clazz) {
     // Only for Anything class extended class = null;
     assert(exists extendedClass =
@@ -219,18 +232,23 @@ describeClass<T>(Class<T> clazz) {
     value interfaces =
             if(nonempty interfaces = clazz.satisfiedTypes)
             then interfaces.collect((iface)
-            => iface.declaration.interfaceApply<Anything>())
+                => iface.declaration.interfaceApply<Anything>())
             else [];
 
     return [clazz, extendedClass, interfaces];
 }
 
 // TODO move to reflectionTools.ceylon file
-[T, Class<T>, Class<Anything>, [Interface<>*]]
+[T, Class<T>, Class<Anything>, [Interface<Anything>*]]
 describeInstance<T>(T instance) {
     assert(is Class<T> clazz = type(instance));
     return [instance, *describeClass(clazz)];
 }
+
+[Anything, Class<>, Class<>, [Interface<>*]]
+describeComponent<T>(Class<T>|T comp) => switch(comp)
+    case(is Class<Anything>) [null, *describeClass(comp)]
+    else  describeInstance(comp);
 
 //
 //shared void run() {
@@ -263,10 +281,6 @@ class Atom1 {
 }
 
 class Atom2(shared Integer i) { string = "Atom2(``i``)"; }
-
-class Dog(shared String nichName, shared Person owner)  {
-    string = "Dog(nichName = ``nichName``, owner = ``owner``)";
-}
 
 class Box(shared Atom atom)  {
     string = "Box(atom = ``atom``)";
@@ -301,7 +315,7 @@ class Matryoshka0()  {
 test
 shared void registryShouldRegisterType_whenRegisterCalled() {
     value registry = Registry();
-    registry.register2(`Atom`);
+    registry.register(`Atom`);
     assertIs(registry.getInstance(`Atom`), `Atom`);
 }
 
@@ -342,8 +356,8 @@ shared void registryShouldCreateInstance_ForTypeWithExplicitConstructorWithOnePa
 test
 shared void registryShouldCreateInstance_WithOneRegisteredDependencyType() {
     value registry = Registry();
-    registry.register2(`Atom`);
-    registry.register2(`Box`);
+    registry.register(`Atom`);
+    registry.register(`Box`);
     value box = registry.getInstance(`Box`);
     assertIs(box, `Box`);
 }
@@ -352,14 +366,14 @@ test
 shared void registryShouldRegisterTypeWithInstanceInRegisterMethodCalled() {
     value registry = Registry();
 //    registry.register(`Box`, Box(Atom()));
-    registry.register2(Box(Atom()));
+    registry.register(Box(Atom()));
     value box = registry.getInstance(`Box`);
     assertIs(box, `Box`);
 }
 
 test
 shared void registryShouldRegisterTypeWithInstanceInConstuctor() {
-    value registry = Registry {`Box`-> Box(Atom())};
+    value registry = Registry { Box(Atom()) };
     value box = registry.getInstance(`Box`);
     assertIs(box, `Box`);
 }
@@ -394,7 +408,7 @@ shared void registryShouldCreateInstanceWithDefaultParameter() {
     assertIs(registry.getInstance(`Box2`), `Box2`);
 }
 
-// --------------------------------------------------------------------------
+// ============================ INTERFACES ================================
 
 interface Postman { }
 interface Operator { }
@@ -403,9 +417,18 @@ class AsiaPostman() satisfies Postman { }
 class RuPostal(shared Postman postman) { }
 class AsiaPostal(shared Postman postman = AsiaPostman()) { }
 
+
+// ============================ CASE CLASS ================================
+
 abstract class Fruit() of orange | apple { }
 object apple extends Fruit() {}
 object orange extends Fruit() {}
+
+// ============================ ABSTRACT CLASS ================================
+
+abstract class Animal() {}
+class Dog() extends Animal() { }
+class Cat() extends Animal() { }
 
 tag("if")
 test
@@ -442,6 +465,13 @@ shared void registryShouldReturnSameInstanceForGivenTwoInterfaces() {
     assertEquals(postman, operator);
 }
 
+tag("abstract")
+test
+shared void registryShouldCreateInstanceForAbstractClass() {
+    value registry = Registry {`Dog`};
+    value animal = registry.getInstance(`Animal`);
+    assertIs(animal, `Dog`);
+}
 
 test
 shared void describeClass_SouldReturnCorrectInfo_ForClassWithMultiInterfaces() {
