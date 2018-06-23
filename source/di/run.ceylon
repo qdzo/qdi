@@ -26,58 +26,11 @@ import ceylon.test {
     tag
 }
 
-Boolean loggingEnabled = true;
+Boolean loggingEnabled = false;
 void print(Anything val) {
     if(loggingEnabled) {
         ceylonPrint(val);
     }
-}
-// ----------------------------------------------------
-
-class Person(shared String name, shared Integer age)  {
-    string = "Person(name = ``name``, age = ``age``)";
-}
-
-class Atom() { string = "Atom()"; }
-
-class Atom1 {
-    shared new () {}
-    string = "Atom1()";
-}
-
-class Atom2(shared Integer i) { string = "Atom2(``i``)"; }
-
-class Dog(shared String nichName, shared Person owner)  {
-    string = "Dog(nichName = ``nichName``, owner = ``owner``)";
-}
-
-class Box(shared Atom atom)  {
-    string = "Box(atom = ``atom``)";
-}
-
-class Box1  {
-    shared Atom atom;
-    shared new (Atom atom) { this.atom = atom; }
-    string = "Box(atom = ``atom``)";
-}
-
-class Box2(shared Atom2 atom = Atom2(2))  {
-    string = "Box(atom = ``atom``)";
-}
-class Matryoshka1(Matryoshka2 m2)  {
-    string = "Matryoshka1(m2 = ``m2``)";
-}
-
-class Matryoshka2(Matryoshka3 m31, Matryoshka3 m32)  {
-    string = "Matryoshka2(m3 = ``m31``, m3 = ``m32``)";
-}
-
-class Matryoshka3(Matryoshka0 m01, Matryoshka0 m02, Matryoshka0 m03)  {
-    string = "Matryoshka3(m3 = ``m01``, m3 = ``m02``, m3 = ``m03``)";
-}
-
-class Matryoshka0()  {
-    string = "Matryoshka0()";
 }
 // ----------------------------------------------------
 
@@ -255,6 +208,30 @@ class Registry {
     }
 }
 
+// TODO move to reflectionTools.ceylon file
+[Class<T>, Class<Anything>, [Interface<>*]]
+describeClass<T>(Class<T> clazz) {
+    // Only for Anything class extended class = null;
+    assert(exists extendedClass =
+            clazz.declaration.extendedType
+                ?.declaration?.classApply<Anything>());
+
+    value interfaces =
+            if(nonempty interfaces = clazz.satisfiedTypes)
+            then interfaces.collect((iface)
+            => iface.declaration.interfaceApply<Anything>())
+            else [];
+
+    return [clazz, extendedClass, interfaces];
+}
+
+// TODO move to reflectionTools.ceylon file
+[T, Class<T>, Class<Anything>, [Interface<>*]]
+describeInstance<T>(T instance) {
+    assert(is Class<T> clazz = type(instance));
+    return [instance, *describeClass(clazz)];
+}
+
 //
 //shared void run() {
 //    value registry = Registry();
@@ -272,6 +249,55 @@ class Registry {
 ////    print(`Person`.defaultConstructor?.namedApply({"name"-> "Vitaly", "age"-> 31}));
 //}
 
+// ----------------------------------------------------
+
+class Person(shared String name, shared Integer age)  {
+    string = "Person(name = ``name``, age = ``age``)";
+}
+
+class Atom() { string = "Atom()"; }
+
+class Atom1 {
+    shared new () {}
+    string = "Atom1()";
+}
+
+class Atom2(shared Integer i) { string = "Atom2(``i``)"; }
+
+class Dog(shared String nichName, shared Person owner)  {
+    string = "Dog(nichName = ``nichName``, owner = ``owner``)";
+}
+
+class Box(shared Atom atom)  {
+    string = "Box(atom = ``atom``)";
+}
+
+class Box1  {
+    shared Atom atom;
+    shared new (Atom atom) { this.atom = atom; }
+    string = "Box(atom = ``atom``)";
+}
+
+class Box2(shared Atom2 atom = Atom2(2))  {
+    string = "Box(atom = ``atom``)";
+}
+class Matryoshka1(Matryoshka2 m2)  {
+    string = "Matryoshka1(m2 = ``m2``)";
+}
+
+class Matryoshka2(Matryoshka3 m31, Matryoshka3 m32)  {
+    string = "Matryoshka2(m3 = ``m31``, m3 = ``m32``)";
+}
+
+class Matryoshka3(Matryoshka0 m01, Matryoshka0 m02, Matryoshka0 m03)  {
+    string = "Matryoshka3(m3 = ``m01``, m3 = ``m02``, m3 = ``m03``)";
+}
+
+class Matryoshka0()  {
+    string = "Matryoshka0()";
+}
+
+// ----------------------------------------------------
 test
 shared void registryShouldRegisterType_whenRegisterCalled() {
     value registry = Registry();
@@ -371,10 +397,15 @@ shared void registryShouldCreateInstanceWithDefaultParameter() {
 // --------------------------------------------------------------------------
 
 interface Postman { }
-class RuPostman() satisfies Postman { }
+interface Operator { }
+class RuPostman() satisfies Postman & Operator { }
 class AsiaPostman() satisfies Postman { }
-class RuPostal(shared Postman postman)  { }
-class AsiaPostal(shared Postman postman = AsiaPostman())  { }
+class RuPostal(shared Postman postman) { }
+class AsiaPostal(shared Postman postman = AsiaPostman()) { }
+
+abstract class Fruit() of orange | apple { }
+object apple extends Fruit() {}
+object orange extends Fruit() {}
 
 tag("if")
 test
@@ -399,3 +430,43 @@ shared void registryShouldCreateInstanceForGivenInterfaceWithItsDefaultParameter
     value registry = Registry {`AsiaPostal`};
     assertIs(registry.getInstance(`AsiaPostal`), `AsiaPostal`);
 }
+
+tag("if")
+test
+shared void registryShouldReturnSameInstanceForGivenTwoInterfaces() {
+    value registry = Registry {`RuPostman`};
+    value postman = registry.getInstance(`Postman`);
+    value operator = registry.getInstance(`Operator`);
+    assertIs(postman, `RuPostman`);
+    assertIs(operator, `RuPostman`);
+    assertEquals(postman, operator);
+}
+
+
+test
+shared void describeClass_SouldReturnCorrectInfo_ForClassWithMultiInterfaces() {
+    value actual = describeClass(`RuPostman`);
+    assertEquals(actual, [`RuPostman`, `Basic`, [`Postman`, `Operator`]]);
+}
+
+
+test
+shared void describeInstance_SouldReturnCorrectInfo_ForClassWithMultiInterfaces() {
+    value postman = RuPostman();
+    value actual = describeInstance(postman);
+    assertEquals {
+        actual = actual;
+        expected = [postman, `RuPostman`, `Basic`, [`Postman`, `Operator`]];
+    };
+}
+
+test
+shared void describeInstance_SouldReturnCorrectInfo_ForCaseClass() {
+    value actual = describeInstance(orange);
+    assertEquals(actual[0], orange);
+    // orange is class orange with signleton object
+    assertEquals(actual[1],  type(orange));
+    assertEquals(actual[2], `Fruit`);
+    assertEquals(actual[3], []);
+}
+
