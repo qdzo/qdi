@@ -9,7 +9,6 @@ import ceylon.language.meta {
     type
 }
 import ceylon.language.meta.declaration {
-    OpenClassOrInterfaceType,
     OpenClassType,
     OpenTypeVariable,
     OpenUnion,
@@ -21,7 +20,9 @@ import ceylon.language.meta.declaration {
 import ceylon.language.meta.model {
     Type,
     Class,
-    Interface
+    Interface,
+    UnionType,
+    IntersectionType
 }
 import ceylon.logging {
     Logger,
@@ -29,8 +30,7 @@ import ceylon.logging {
     addLogWriter,
     writeSimpleLog,
     defaultPriority,
-    debug,
-    error
+    trace
 }
 import ceylon.test {
     test,
@@ -46,16 +46,9 @@ Logger log = logger(`module di`);
 beforeTestRun
 shared void setupLogger() {
     addLogWriter(writeSimpleLog);
-    defaultPriority = debug;
+    defaultPriority = trace;
 }
 
-Boolean loggingEnabled = true;
-
-void print(Anything val) {
-    if(loggingEnabled) {
-        ceylonPrint(val);
-    }
-}
 // ----------------------------------------------------
 
 class Registry {
@@ -112,7 +105,7 @@ class Registry {
             {Class<>|Object*} components = empty,
             {[Class<>, String, Anything]*} parameters = empty) {
 
-        value described = components.map(describeComponent);
+        value described = components.collect(describeComponent);
         this.components.putAll {
             for ([inst, clazz, *_] in described)
             clazz -> inst
@@ -148,52 +141,58 @@ class Registry {
         value [inst, clazz, extClazz, ifaces] = describeComponent(typeOrInstance);
         components.put(clazz, inst);
         extendComponents.put(extClazz, clazz);
-        print("Registry.register2: register " + (if(exists inst) then "instance: <``inst``> for " else "") + "type <``clazz``>");
+        log.info("Registry.register: register " +
+                    (if(exists inst) then "instance: <``inst``> for " else "") +
+                "type <``clazz``>");
         interfaceComponents.putAll { for (iface in ifaces) iface -> clazz };
     }
 
     T tryToCreateInstance<T>(Class<T> t) {
         try {
-            log.info("Registry.tryToCreateInstance: class <``t``>");
+            log.debug("Registry.tryToCreateInstance: class <``t``>");
             value paramsWithTypes = constructParameters(t);
             if (paramsWithTypes.empty) {
-                log.debug("Registry.tryToCreateInstance: default constructor for type <``t``> is without parameters");
+                log.trace(() => "Registry.tryToCreateInstance: default constructor for type <``t``> is without parameters");
                 value instance = t.apply();
                 log.info("Registry.tryToCreateInstance: instance created for type <``t``>");
                 return instance;
             }
-            log.debug("Registry.tryToCreateInstance: default constructor for type <``t``> has ``paramsWithTypes.size`` parameters");
+            log.trace(() => "Registry.tryToCreateInstance: default constructor for "+
+                      "type <``t``> has ``paramsWithTypes.size`` parameters");
             value params = instantiateParams(t, paramsWithTypes);
-            log.debug("Registry.tryToCreateInstance: try to instantiate type <``t``>");
+            log.trace(() => "Registry.tryToCreateInstance: try to instantiate type <``t``>");
             value instance = t.namedApply(params);
-            log.info("Registry.tryToCreateInstance: instance created for type <``t``>");
+            log.debug(() => "Registry.tryToCreateInstance: instance created for type <``t``>");
             return instance;
         } catch(Exception th) {
             value errorMsg = "Can't create instance: ``th.message``";
-            log.error("Registry.tryToCreateInstance: ``errorMsg``");
+            log.error(() => "Registry.tryToCreateInstance: ``errorMsg``");
             throw Exception(errorMsg);
         }
     }
 
     T instantiateClass<T>(Class<T> t) {
+        // registered class
         if (components.defines(t)) {
-            log.debug("Registry.getInstance: components has registered type <``t``>");
+            log.debug(() => "Registry.getInstance: components has registered type <``t``>");
             if (exists instance = components.get(t)) {
-                log.debug("Registry.getInstance: components has instance for type <``t``>");
+                log.debug(() => "Registry.getInstance: components has instance for type <``t``>");
                 assert (is T instance);
                 return instance;
             } else {
-                log.debug("Registry.getInstance: components has not instance for type <``t``>");
+                log.debug(() => "Registry.getInstance: components has not instance for type <``t``>");
                 value instance = tryToCreateInstance(t);
                 components.put(t, instance);
                 return instance;
             }
-        } else if (exists tt = extendComponents[t]) {
+        }
+       // abstract class
+        else if (exists tt = extendComponents[t]) {
             value instance = instantiateClass(tt);
             assert (is T instance);
             return instance;
         }
-        log.error("Registry.getInstance: components has not registered type ``t``");
+        log.error(() => "Registry.getInstance: components has not registered type ``t``");
         throw Exception("There are no such type in Registry <``t``>");
     }
 
@@ -206,30 +205,67 @@ class Registry {
        }
     }
 
+//    - [[ClassOrInterface]]
+//    - [[ClassOrInterface]]
+//    - [[UnionType]]
+//    - [[IntersectionType]]
+
     shared T getInstance<T>(Type<T> t) {
-        log.info("Registry.getInstance: for type <``t``>");
+        log.info(() => "Registry.getInstance: for type <``t``>");
+        // interface
         if (is Interface<T> t) {
             if(is Class<T> satisfiedClass = interfaceComponents.get(t)) {
-                log.debug("Registry.getInstance: has registered type for interface <``t``>");
+                log.debug(() => "Registry.getInstance: has registered type for interface <``t``>");
                 return instantiateClass(satisfiedClass);
             }
         }
+        // class
         else if(is Class<T> t) {
             return instantiateClass(t);
         }
+        // union
+        else if(is UnionType<T> t) {
+            assert(is T i = t.caseTypes.map(tryGetInstance).coalesced.first);
+            return i;
+        }
+        // intersection
+        else if(is IntersectionType<T> t) {
+
+            value intersected = interfaceComponents
+                .filterKeys((iface) => iface in t.satisfiedTypes)
+                .inverse()
+                .find((clazz -> ifaces) => ifaces.every((iface) => iface in t.satisfiedTypes));
+            
+            if(exists intersected,
+                is Class<T> cl = intersected.key) {
+                return instantiateClass(cl);
+            }
+        }
+        // not found
         value msg = "Type is not interface nor class: <``t``>";
-        log.error("Registry.getInstance: ``msg``");
+        log.error(() => "Registry.getInstance: ``msg``");
         throw Exception(msg);
     }
 
+    Type<> closeOpenType(OpenType openType) => switch(ot = openType)
+        case (is OpenClassType) ot.declaration.classApply<Anything>()
+        case (is OpenInterfaceType) ot.declaration.interfaceApply<Anything>()
+        case (is OpenUnion) closeOpenUnionType(ot)
+        case (is OpenIntersection) closeOpenIntersectionType(ot)
+        case (is OpenTypeVariable) nothing
+        case (nothingType) nothing;
 
-    [Type<>*] closeOpenType(OpenType openType) => switch(ot = openType)
-            case (is OpenClassType) [ot.declaration.classApply<Anything>()]
-            case (is OpenInterfaceType) [ot.declaration.interfaceApply<Anything>()]
-            case (is OpenUnion)  ot.caseTypes.flatMap(closeOpenType).sequence()
-            case (is OpenTypeVariable) nothing
-            case (is OpenIntersection) nothing
-            case (nothingType) nothing;
+    Type<> closeOpenUnionType(OpenUnion ot) {
+        value types = ot.caseTypes.map(closeOpenType).sequence();
+        assert(nonempty types);
+        return types.reduce<Type<>>((p, e) => p.union(e));
+    }
+
+    Type<> closeOpenIntersectionType(OpenIntersection ot) {
+        value types = ot.satisfiedTypes.map(closeOpenType).sequence();
+        assert(nonempty types);
+        return types.reduce<Type<>>((p, e) => p.intersection(e));
+    }
 
     {<String->Anything>*}
     instantiateParams<T>(Class<T> t, {Parameter*} paramsTypes)
@@ -238,15 +274,15 @@ class Registry {
             if(exists paramVal = parameters[[t, parameter.name]]) {
                 return parameter.name -> paramVal;
             } else {
-                value declarations = closeOpenType(parameter.type);
-                value depInstance = declarations.map(tryGetInstance).coalesced.first;
+                value closeType = closeOpenType(parameter.type);
+                value depInstance = tryGetInstance(closeType);
                 if(exists depInstance) {
                     return parameter.name -> depInstance;
                 }
                 if(parameter.defaulted) {
                     return null;
                 }
-                throw Exception("Unresolved dependency <``parameter.type`` ``parameter.name``> for class <``t``>");
+                throw Exception("Unresolved dependency <``parameter.name``> (``parameter.type``) for class <``t``>");
             }
         }
     ).coalesced;
@@ -255,7 +291,7 @@ class Registry {
         log.debug(() => "Registry.constructParameters: parameters for class <``t``>");
         assert(exists parameterDeclarations
                 = t.defaultConstructor?.declaration?.parameterDeclarations);
-        return parameterDeclarations.map((e) {
+        return parameterDeclarations.collect((e) {
             log.trace(() => "Registry.constructParameters: parameter-declaration: <``e.openType``>");
             return Parameter(e.name, e.openType, e.defaulted);
         });
@@ -455,6 +491,7 @@ interface Operator { }
 class RuPostman() satisfies Postman & Operator { }
 class AsiaPostman() satisfies Postman { }
 class RuPostal(shared Postman postman) { }
+class RuPostalStore(shared Postman & Operator employee) { }
 class AsiaPostal(shared Postman postman = AsiaPostman()) { }
 
 
@@ -474,7 +511,7 @@ class Cat() extends Animal() { }
 
 class Street() { }
 class Address(String|Street street) { }
-tag("repl")
+
 test
 shared void registryShouldCreateInstanceWithUnionTypeDependency() {
     value registry = Registry { `Street`, `Address` };
@@ -484,6 +521,13 @@ shared void registryShouldCreateInstanceWithUnionTypeDependency() {
 
 // ============================ INTERSECTION TYPES ================================
 
+tag("repl")
+test
+shared void registryShouldCreateInstanceWithIntersectionTypeDependency() {
+    value registry = Registry { `RuPostalStore`, `RuPostman`, `AsiaPostman` };
+    value actual = registry.getInstance(`RuPostalStore`);
+    assertIs(actual, `RuPostalStore`);
+}
 
 // ============================ INTERFACE TESTS ================================
 
