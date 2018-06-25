@@ -30,6 +30,7 @@ import ceylon.logging {
     addLogWriter,
     writeSimpleLog,
     defaultPriority,
+    debug,
     trace
 }
 import ceylon.test {
@@ -128,9 +129,12 @@ class Registry {
 
     class Parameter(
             shared String name,
-            shared OpenType type,
+            shared Type<> type,
+//            shared OpenType type,
             shared Boolean defaulted
-            )  { }
+            )  {
+        string => "Parameter(name=``name``, type=``type``, defaulted=``defaulted``)";
+    }
 
     shared void registerParameter<T>(Class<T> t, String param, Anything val) {
         log.info("Registry.registerParameter: for type <``t``>, name: <``param``>, val: <``val else "null"``>");
@@ -149,7 +153,7 @@ class Registry {
 
     T tryToCreateInstance<T>(Class<T> t) {
         try {
-            log.debug("Registry.tryToCreateInstance: class <``t``>");
+            log.debug(() => "Registry.tryToCreateInstance: class <``t``>");
             value paramsWithTypes = constructParameters(t);
             if (paramsWithTypes.empty) {
                 log.trace(() => "Registry.tryToCreateInstance: default constructor for type <``t``> is without parameters");
@@ -160,7 +164,7 @@ class Registry {
             log.trace(() => "Registry.tryToCreateInstance: default constructor for "+
                       "type <``t``> has ``paramsWithTypes.size`` parameters");
             value params = instantiateParams(t, paramsWithTypes);
-            log.trace(() => "Registry.tryToCreateInstance: try to instantiate type <``t``>");
+            log.trace(() => "Registry.tryToCreateInstance: try to instantiate type <``t``> with params: <``params``>");
             value instance = t.namedApply(params);
             log.debug(() => "Registry.tryToCreateInstance: instance created for type <``t``>");
             return instance;
@@ -247,60 +251,98 @@ class Registry {
         throw Exception(msg);
     }
 
-    Type<> closeOpenType(OpenType openType) => switch(ot = openType)
-        case (is OpenClassType) ot.declaration.classApply<Anything>()
-        case (is OpenInterfaceType) ot.declaration.interfaceApply<Anything>()
-        case (is OpenUnion) closeOpenUnionType(ot)
-        case (is OpenIntersection) closeOpenIntersectionType(ot)
-        case (is OpenTypeVariable) nothing
-        case (nothingType) nothing;
+    Type<> closeOpenType<T>(Class<T> t, OpenType openType) => switch(ot = openType)
+    case (is OpenClassType) ot.declaration.classApply<Anything>(*t.typeArgumentList)
+    case (is OpenInterfaceType) ot.declaration.interfaceApply<Anything>(*t.typeArgumentList)
+    case (is OpenUnion) closeOpenUnionType(t, ot)
+    case (is OpenIntersection) closeOpenIntersectionType(t, ot)
+    case (is OpenTypeVariable) closeOpenTypeVariable(t, ot)
+    case (nothingType) nothing;
 
-    Type<> closeOpenUnionType(OpenUnion ot) {
-        value types = ot.caseTypes.map(closeOpenType).sequence();
+    // REVIEW: Analyze this part better (Vitaly 25.06.2018)
+    Type<> closeOpenTypeVariable<T>(Class<T> t, OpenTypeVariable ot) {
+        value decl = ot.declaration;
+//        log.debug("----------------------------------------------");
+//        log.debug(() => "decl " + decl.string);
+//        log.debug(() => "caseType " + decl.caseTypes.string);
+//        log.debug(() => "container " + decl.container.string);
+//        log.debug(() => "dafTypeArg " + (decl.defaultTypeArgument?.string else ""));
+//        log.debug(() => "satisfiedTypes " + decl.satisfiedTypes.string );
+//        log.debug(() => "variance " + decl.variance.string);
+//        log.debug(() => "AAAA" + t.typeArguments.string);
+//        log.debug("----------------------------------------------");
+        if(exists typeVar = t.typeArguments[ot.declaration]) {
+            return typeVar;
+        }
+//        if (nonempty ct = ot.declaration.caseTypes) {
+//            return closeOpenType(t, ct.first);
+//        }
+//        else if(exists dta = ot.declaration.defaultTypeArgument) {
+//            return closeOpenType(t, dta);
+//        }
+//        else if (nonempty st = ot.declaration.satisfiedTypes) {
+//            return closeOpenType(t, st.first);
+//        }
+        throw Exception("I Don't know what to do in this situation (OpenTypeVariable)");
+    }
+
+    Type<> closeOpenUnionType<T>(Class<T> tt, OpenUnion ot) {
+        value types = ot.caseTypes.map((t) => closeOpenType(tt, t)).sequence();
         assert(nonempty types);
         return types.reduce<Type<>>((p, e) => p.union(e));
     }
 
-    Type<> closeOpenIntersectionType(OpenIntersection ot) {
-        value types = ot.satisfiedTypes.map(closeOpenType).sequence();
+    Type<> closeOpenIntersectionType<T>(Class<T> tt, OpenIntersection ot) {
+        value types = ot.satisfiedTypes.map((t) => closeOpenType(tt, t)).sequence();
         assert(nonempty types);
         return types.reduce<Type<>>((p, e) => p.intersection(e));
     }
 
     {<String->Anything>*}
-    instantiateParams<T>(Class<T> t, {Parameter*} paramsTypes)
-            => paramsTypes.map (
-                (Parameter parameter) {
-            if(exists paramVal = parameters[[t, parameter.name]]) {
-                return parameter.name -> paramVal;
-            } else {
-                value closeType = closeOpenType(parameter.type);
-                value depInstance = tryGetInstance(closeType);
-                if(exists depInstance) {
-                    return parameter.name -> depInstance;
+    instantiateParams<T>(Class<T> t, {Parameter*} paramsTypes) {
+        log.debug(() => "Registry.instantiateParams: try to instantiate params: ``paramsTypes``");
+        value instantiatedParams = paramsTypes.map (
+                    (Parameter parameter) {
+                if(exists paramVal = parameters[[t, parameter.name]]) {
+                    return parameter.name -> paramVal;
+                } else {
+//                parameter.type
+                    value typeArgs = t.typeArgumentList;
+//                    value closeType = closeOpenType(parameter.type, *typeArgs);
+                    value closeType = parameter.type;
+                    value depInstance = tryGetInstance(closeType);
+                    if(exists depInstance) {
+                        return parameter.name -> depInstance;
+                    }
+                    if(parameter.defaulted) {
+                        return null;
+                    }
+                    throw Exception("Unresolved dependency <``parameter.name``> (``parameter.type``) for class <``t``>");
                 }
-                if(parameter.defaulted) {
-                    return null;
-                }
-                throw Exception("Unresolved dependency <``parameter.name``> (``parameter.type``) for class <``t``>");
             }
-        }
-    ).coalesced;
+        ).coalesced;
+        return instantiatedParams;
+    }
 
     {Parameter*} constructParameters<T>(Class<T> t) {
         log.debug(() => "Registry.constructParameters: parameters for class <``t``>");
+        
         assert(exists parameterDeclarations
                 = t.defaultConstructor?.declaration?.parameterDeclarations);
-        return parameterDeclarations.collect((e) {
+        value parameters =  parameterDeclarations.collect((e) {
             log.trace(() => "Registry.constructParameters: parameter-declaration: <``e.openType``>");
-            return Parameter(e.name, e.openType, e.defaulted);
+            value closedType = closeOpenType(t, e.openType);
+            return Parameter(e.name, closedType, e.defaulted);
         });
+        log.debug(() => "Registry.constructParameters: constructed parameters: <``parameters``>");
+        return parameters;
     }
 }
 
 // TODO move to reflectionTools.ceylon file
 [Class<T>, Class<Anything>, [Interface<Anything>*]]
 describeClass<T>(Class<T> clazz) {
+    
     // Only for Anything class extended class = null;
     assert(exists extendedClass =
             clazz.declaration.extendedType
@@ -309,7 +351,7 @@ describeClass<T>(Class<T> clazz) {
     value interfaces =
             if(nonempty interfaces = clazz.satisfiedTypes)
             then interfaces.collect((iface)
-                => iface.declaration.interfaceApply<Anything>())
+                => iface.declaration.interfaceApply<Anything>(*iface.typeArgumentList))
             else [];
 
     return [clazz, extendedClass, interfaces];
@@ -324,8 +366,27 @@ describeInstance<T>(T instance) {
 
 [Anything, Class<>, Class<>, [Interface<>*]]
 describeComponent<T>(Class<T>|T comp) => switch(comp)
-    case(is Class<Anything>) [null, *describeClass(comp)]
+    case(is Class<T>) [null, *describeClass(comp)]
     else  describeInstance(comp);
+
+// ========================= DESCRIBE-FUNCTIONS TESTS ==========================
+
+test
+shared void describeClass_SouldReturnCorrectInfo_ForClassWithMultiInterfaces() {
+    value actual = describeClass(`RuPostman`);
+    assertEquals(actual, [`RuPostman`, `Basic`, [`Postman`, `Operator`]]);
+}
+
+
+test
+shared void describeInstance_SouldReturnCorrectInfo_ForClassWithMultiInterfaces() {
+    value postman = RuPostman();
+    value actual = describeInstance(postman);
+    assertEquals {
+        actual = actual;
+        expected = [postman, `RuPostman`, `Basic`, [`Postman`, `Operator`]];
+    };
+}
 
 //
 //shared void run() {
@@ -344,7 +405,7 @@ describeComponent<T>(Class<T>|T comp) => switch(comp)
 ////    print(`Person`.defaultConstructor?.namedApply({"name"-> "Vitaly", "age"-> 31}));
 //}
 
-// ----------------------------------------------------
+// ------------------ MAIN TESTS ------------------------
 
 class Person(shared String name, shared Integer age)  {
     string = "Person(name = ``name``, age = ``age``)";
@@ -372,22 +433,6 @@ class Box1  {
 class Box2(shared Atom2 atom = Atom2(2))  {
     string = "Box(atom = ``atom``)";
 }
-class Matryoshka1(Matryoshka2 m2)  {
-    string = "Matryoshka1(m2 = ``m2``)";
-}
-
-class Matryoshka2(Matryoshka3 m31, Matryoshka3 m32)  {
-    string = "Matryoshka2(m3 = ``m31``, m3 = ``m32``)";
-}
-
-class Matryoshka3(Matryoshka0 m01, Matryoshka0 m02, Matryoshka0 m03)  {
-    string = "Matryoshka3(m3 = ``m01``, m3 = ``m02``, m3 = ``m03``)";
-}
-
-class Matryoshka0()  {
-    string = "Matryoshka0()";
-}
-
 // ----------------------------------------------------
 test
 shared void registryShouldRegisterType_whenRegisterCalled() {
@@ -473,27 +518,34 @@ shared void registryShouldThrowExceptinWhenThereAreNoSomeParameters() {
 }
 
 test
-shared void registryShouldCreateDeeplyNestedInstances() {
-    value registry = Registry { `Matryoshka0`, `Matryoshka1`, `Matryoshka2`, `Matryoshka3` };
-    assertIs(registry.getInstance(`Matryoshka1`), `Matryoshka1`);
-}
-
-test
 shared void registryShouldCreateInstanceWithDefaultParameter() {
     value registry = Registry {`Box2`};
     assertIs(registry.getInstance(`Box2`), `Box2`);
 }
 
-// ============================ INTERFACES ================================
+//------------------------ NESTED DEPENDENCY TESTS -------------------------------
 
-interface Postman { }
-interface Operator { }
-class RuPostman() satisfies Postman & Operator { }
-class AsiaPostman() satisfies Postman { }
-class RuPostal(shared Postman postman) { }
-class RuPostalStore(shared Postman & Operator employee) { }
-class AsiaPostal(shared Postman postman = AsiaPostman()) { }
+class Matryoshka1(Matryoshka2 m2)  {
+    string = "Matryoshka1(m2 = ``m2``)";
+}
 
+class Matryoshka2(Matryoshka3 m31, Matryoshka3 m32)  {
+    string = "Matryoshka2(m3 = ``m31``, m3 = ``m32``)";
+}
+
+class Matryoshka3(Matryoshka0 m01, Matryoshka0 m02, Matryoshka0 m03)  {
+    string = "Matryoshka3(m3 = ``m01``, m3 = ``m02``, m3 = ``m03``)";
+}
+
+class Matryoshka0()  {
+    string = "Matryoshka0()";
+}
+
+test
+shared void registryShouldCreateDeeplyNestedInstances() {
+    value registry = Registry { `Matryoshka0`, `Matryoshka1`, `Matryoshka2`, `Matryoshka3` };
+    assertIs(registry.getInstance(`Matryoshka1`), `Matryoshka1`);
+}
 
 // ============================ CASE CLASS ================================
 
@@ -501,11 +553,15 @@ abstract class Fruit() of orange | apple { }
 object apple extends Fruit() {}
 object orange extends Fruit() {}
 
-// ============================ ABSTRACT CLASS ================================
-
-abstract class Animal() {}
-class Dog() extends Animal() { }
-class Cat() extends Animal() { }
+test
+shared void describeInstance_SouldReturnCorrectInfo_ForCaseClass() {
+    value actual = describeInstance(orange);
+    assertEquals {
+        actual = actual;
+        // orange is class orange with signleton object
+        expected = [orange, type(orange), `Fruit`, []];
+    };
+}
 
 // ============================ UNION TYPE ================================
 
@@ -521,12 +577,35 @@ shared void registryShouldCreateInstanceWithUnionTypeDependency() {
 
 // ============================ INTERSECTION TYPES ================================
 
-tag("repl")
+interface Postman { }
+interface Operator { }
+class RuPostman() satisfies Postman & Operator { }
+class AsiaPostman() satisfies Postman { }
+class RuPostal(shared Postman postman) { }
+class RuPostalStore(shared Postman & Operator employee) { }
+class AsiaPostal(shared Postman postman = AsiaPostman()) { }
+
+
+
 test
 shared void registryShouldCreateInstanceWithIntersectionTypeDependency() {
     value registry = Registry { `RuPostalStore`, `RuPostman`, `AsiaPostman` };
     value actual = registry.getInstance(`RuPostalStore`);
     assertIs(actual, `RuPostalStore`);
+}
+
+// ============================ GENERIC TYPES ================================
+
+
+class GenericBox<T>(shared T t)  { }
+class GenericTrackCar<T>(shared GenericBox<T> box)  { }
+
+tag("repl")
+test
+shared void registryShouldCreateInstanceWithGenericTypeDependency() {
+    value registry = Registry { `GenericTrackCar<String>`, `GenericBox<String>`, "String item" };
+    value actual = registry.getInstance(`GenericTrackCar<String>`);
+    assertIs(actual, `GenericTrackCar<String>`);
 }
 
 // ============================ INTERFACE TESTS ================================
@@ -566,7 +645,12 @@ shared void registryShouldReturnSameInstanceForGivenTwoInterfaces() {
     assertEquals(postman, operator);
 }
 
-// ========================= ABSTRACT TESTS ==========================
+// ========================= ABSTRACT TYPES ==========================
+
+abstract class Animal() {}
+class Dog() extends Animal() { }
+class Cat() extends Animal() { }
+
 
 tag("abstract")
 test
@@ -574,34 +658,5 @@ shared void registryShouldCreateInstanceForAbstractClass() {
     value registry = Registry {`Dog`};
     value animal = registry.getInstance(`Animal`);
     assertIs(animal, `Dog`);
-}
-
-// ========================= DESCRIBE-FUNCTIONS TESTS ==========================
-
-test
-shared void describeClass_SouldReturnCorrectInfo_ForClassWithMultiInterfaces() {
-    value actual = describeClass(`RuPostman`);
-    assertEquals(actual, [`RuPostman`, `Basic`, [`Postman`, `Operator`]]);
-}
-
-
-test
-shared void describeInstance_SouldReturnCorrectInfo_ForClassWithMultiInterfaces() {
-    value postman = RuPostman();
-    value actual = describeInstance(postman);
-    assertEquals {
-        actual = actual;
-        expected = [postman, `RuPostman`, `Basic`, [`Postman`, `Operator`]];
-    };
-}
-
-test
-shared void describeInstance_SouldReturnCorrectInfo_ForCaseClass() {
-    value actual = describeInstance(orange);
-    assertEquals(actual[0], orange);
-    // orange is class orange with signleton object
-    assertEquals(actual[1],  type(orange));
-    assertEquals(actual[2], `Fruit`);
-    assertEquals(actual[3], []);
 }
 
