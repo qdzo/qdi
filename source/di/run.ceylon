@@ -15,7 +15,8 @@ import ceylon.language.meta.declaration {
     OpenIntersection,
     OpenType,
     nothingType,
-    OpenInterfaceType
+    OpenInterfaceType,
+    TypeParameter
 }
 import ceylon.language.meta.model {
     Type,
@@ -251,26 +252,60 @@ class Registry {
         throw Exception(msg);
     }
 
-    Type<> closeOpenType<T>(Class<T> t, OpenType openType) => switch(ot = openType)
-    case (is OpenClassType) ot.declaration.classApply<Anything>(*t.typeArgumentList)
-    case (is OpenInterfaceType) ot.declaration.interfaceApply<Anything>(*t.typeArgumentList)
-    case (is OpenUnion) closeOpenUnionType(t, ot)
-    case (is OpenIntersection) closeOpenIntersectionType(t, ot)
-    case (is OpenTypeVariable) closeOpenTypeVariable(t, ot)
-    case (nothingType) nothing;
+    Type<> closeOpenType<T>(Class<T> parentClass, OpenType openType) {
+        switch(ot = openType)
+        case (is OpenClassType) {
+            log.debug(() => "closeOpenType: OpenClassType: ");
+//            log.debug(ot.typeArguments.keys.string);
+//            log.debug(ot.typeArgumentList.string);
+//            log.debug(ot.typeArgumentWithVariances.string);
+//            log.debug("---------------------------------------");
+//            log.debug(parentClass.typeArguments.keys.string);
+//            log.debug(parentClass.typeArgumentList.string);
+//            log.debug(parentClass.typeArgumentWithVariances.string);
+//            log.debug(parentClass.typeArguments.filterKeys((ta) => ta in ot.typeArguments.items).items.string);
+            return ot.declaration
+                .classApply<Anything>(*closeTypeParameters(parentClass, ot.typeArguments));
+        }
+        case (is OpenInterfaceType) {
+            log.debug(() => "closeOpenType: OpenInterfaceType");
+            return ot.declaration
+                .interfaceApply<Anything>(*parentClass.typeArguments.filterKeys(ot.typeArguments.defines).items);
+        }
+        case (is OpenUnion) {
+            log.debug(() => "closeOpenType: OpenUnion");
+            return closeOpenUnionType(parentClass, ot);
+        }
+        case (is OpenIntersection) {
+            log.debug(() => "closeOpenType: OpenIntersection");
+            return closeOpenIntersectionType(parentClass, ot);
+        }
+        case (is OpenTypeVariable){
+            log.debug(() => "closeOpenType: OpenTypeVariable");
+            return closeOpenTypeVariable(parentClass, ot);
+        }
+        case (nothingType) {
+            log.debug(() => "closeOpenType: nothingType");
+            return nothing;
+        }
+    }
+
+    Type<>[] closeTypeParameters(Class<> parentClass, Map<TypeParameter, OpenType> typeArguments) =>
+            [ for (typeParam->openType in typeArguments) closeOpenType(parentClass, openType) ];
 
     // REVIEW: Analyze this part better (Vitaly 25.06.2018)
     Type<> closeOpenTypeVariable<T>(Class<T> t, OpenTypeVariable ot) {
         value decl = ot.declaration;
-//        log.debug("----------------------------------------------");
-//        log.debug(() => "decl " + decl.string);
-//        log.debug(() => "caseType " + decl.caseTypes.string);
-//        log.debug(() => "container " + decl.container.string);
-//        log.debug(() => "dafTypeArg " + (decl.defaultTypeArgument?.string else ""));
-//        log.debug(() => "satisfiedTypes " + decl.satisfiedTypes.string );
-//        log.debug(() => "variance " + decl.variance.string);
-//        log.debug(() => "AAAA" + t.typeArguments.string);
-//        log.debug("----------------------------------------------");
+        log.debug("----------------------------------------------");
+        log.debug(() => "decl " + decl.string);
+        log.debug(() => "caseType " + decl.caseTypes.string);
+        log.debug(() => "container " + decl.container.string);
+        log.debug(() => "dafTypeArg " + (decl.defaultTypeArgument?.string else ""));
+        log.debug(() => "satisfiedTypes " + decl.satisfiedTypes.string );
+        log.debug(() => "variance " + decl.variance.string);
+        log.debug(() => "AAAA" + t.typeArguments.string);
+        log.debug("----------------------------------------------");
+
         if(exists typeVar = t.typeArguments[ot.declaration]) {
             return typeVar;
         }
@@ -306,9 +341,6 @@ class Registry {
                 if(exists paramVal = parameters[[t, parameter.name]]) {
                     return parameter.name -> paramVal;
                 } else {
-//                parameter.type
-                    value typeArgs = t.typeArgumentList;
-//                    value closeType = closeOpenType(parameter.type, *typeArgs);
                     value closeType = parameter.type;
                     value depInstance = tryGetInstance(closeType);
                     if(exists depInstance) {
@@ -599,13 +631,28 @@ shared void registryShouldCreateInstanceWithIntersectionTypeDependency() {
 
 class GenericBox<T>(shared T t)  { }
 class GenericTrackCar<T>(shared GenericBox<T> box)  { }
+class GenericTanker<T,V>(GenericBox<T> box1, GenericBox<V> box2)  { }
 
-tag("repl")
+//tag("repl")
 test
-shared void registryShouldCreateInstanceWithGenericTypeDependency() {
+shared void registryShouldCreateInstanceWithOneGenericTypeDependency() {
     value registry = Registry { `GenericTrackCar<String>`, `GenericBox<String>`, "String item" };
     value actual = registry.getInstance(`GenericTrackCar<String>`);
     assertIs(actual, `GenericTrackCar<String>`);
+}
+
+tag("repl")
+test
+shared void registryShouldCreateInstanceWithTwoGenericTypeDependency() {
+    value registry = Registry {
+        `GenericTanker<String, Integer>`,
+        `GenericBox<String>`,
+        `GenericBox<Integer>`,
+        "String item",
+        101
+    };
+    value actual = registry.getInstance(`GenericTanker<String, Integer>`);
+    assertIs(actual, `GenericTanker<String, Integer>`);
 }
 
 // ============================ INTERFACE TESTS ================================
