@@ -252,37 +252,40 @@ class Registry {
         throw Exception(msg);
     }
 
-    Type<> closeOpenType<T>(Class<T> parentClass, OpenType openType) {
+    "Gets container class and open type, which need to relolve"
+    Type<> resolveOpenType<T>(Class<T> parentClass, OpenType openType) {
         switch(ot = openType)
         case (is OpenClassType) {
             log.debug(() => "closeOpenType: OpenClassType: ");
-//            log.debug(ot.typeArguments.keys.string);
-//            log.debug(ot.typeArgumentList.string);
-//            log.debug(ot.typeArgumentWithVariances.string);
-//            log.debug("---------------------------------------");
-//            log.debug(parentClass.typeArguments.keys.string);
-//            log.debug(parentClass.typeArgumentList.string);
-//            log.debug(parentClass.typeArgumentWithVariances.string);
-//            log.debug(parentClass.typeArguments.filterKeys((ta) => ta in ot.typeArguments.items).items.string);
-            return ot.declaration
-                .classApply<Anything>(*closeTypeParameters(parentClass, ot.typeArguments));
+            value resolvedTypes = resolveOpenTypes(parentClass, ot.typeArgumentList);
+            return ot.declaration.classApply<Anything>(*resolvedTypes);
         }
         case (is OpenInterfaceType) {
             log.debug(() => "closeOpenType: OpenInterfaceType");
-            return ot.declaration
-                .interfaceApply<Anything>(*parentClass.typeArguments.filterKeys(ot.typeArguments.defines).items);
+            value resolvedTypes = resolveOpenTypes(parentClass, ot.typeArgumentList);
+            return ot.declaration.interfaceApply<Anything>(*resolvedTypes);
         }
         case (is OpenUnion) {
             log.debug(() => "closeOpenType: OpenUnion");
-            return closeOpenUnionType(parentClass, ot);
+            value types = resolveOpenTypes(parentClass, ot.caseTypes);
+            assert(nonempty types);
+            return types.reduce<Type<>>((p, e) => p.union(e));
         }
         case (is OpenIntersection) {
             log.debug(() => "closeOpenType: OpenIntersection");
-            return closeOpenIntersectionType(parentClass, ot);
+
+            value types = resolveOpenTypes(parentClass, ot.satisfiedTypes);
+            assert(nonempty types);
+            return types.reduce<Type<>>((p, e) => p.intersection(e));
         }
         case (is OpenTypeVariable){
             log.debug(() => "closeOpenType: OpenTypeVariable");
-            return closeOpenTypeVariable(parentClass, ot);
+            // TODO: add variance checking (Vitaly 27.06.2018)
+            if(exists typeVar = parentClass.typeArguments[ot.declaration]) {
+                return typeVar;
+            }
+            throw Exception("Error while trying resolve OpenTypeVariable: "+
+                  "Haven't such type-var: ``ot.declaration`` in class ``parentClass``");
         }
         case (nothingType) {
             log.debug(() => "closeOpenType: nothingType");
@@ -290,48 +293,8 @@ class Registry {
         }
     }
 
-    Type<>[] closeTypeParameters(Class<> parentClass, Map<TypeParameter, OpenType> typeArguments) =>
-            [ for (typeParam->openType in typeArguments) closeOpenType(parentClass, openType) ];
-
-    // REVIEW: Analyze this part better (Vitaly 25.06.2018)
-    Type<> closeOpenTypeVariable<T>(Class<T> t, OpenTypeVariable ot) {
-        value decl = ot.declaration;
-        log.debug("----------------------------------------------");
-        log.debug(() => "decl " + decl.string);
-        log.debug(() => "caseType " + decl.caseTypes.string);
-        log.debug(() => "container " + decl.container.string);
-        log.debug(() => "dafTypeArg " + (decl.defaultTypeArgument?.string else ""));
-        log.debug(() => "satisfiedTypes " + decl.satisfiedTypes.string );
-        log.debug(() => "variance " + decl.variance.string);
-        log.debug(() => "AAAA" + t.typeArguments.string);
-        log.debug("----------------------------------------------");
-
-        if(exists typeVar = t.typeArguments[ot.declaration]) {
-            return typeVar;
-        }
-//        if (nonempty ct = ot.declaration.caseTypes) {
-//            return closeOpenType(t, ct.first);
-//        }
-//        else if(exists dta = ot.declaration.defaultTypeArgument) {
-//            return closeOpenType(t, dta);
-//        }
-//        else if (nonempty st = ot.declaration.satisfiedTypes) {
-//            return closeOpenType(t, st.first);
-//        }
-        throw Exception("I Don't know what to do in this situation (OpenTypeVariable)");
-    }
-
-    Type<> closeOpenUnionType<T>(Class<T> tt, OpenUnion ot) {
-        value types = ot.caseTypes.map((t) => closeOpenType(tt, t)).sequence();
-        assert(nonempty types);
-        return types.reduce<Type<>>((p, e) => p.union(e));
-    }
-
-    Type<> closeOpenIntersectionType<T>(Class<T> tt, OpenIntersection ot) {
-        value types = ot.satisfiedTypes.map((t) => closeOpenType(tt, t)).sequence();
-        assert(nonempty types);
-        return types.reduce<Type<>>((p, e) => p.intersection(e));
-    }
+    Type<>[] resolveOpenTypes(Class<> parentClass, List<OpenType> openTypes)
+            => [for (openType in openTypes) resolveOpenType(parentClass, openType)];
 
     {<String->Anything>*}
     instantiateParams<T>(Class<T> t, {Parameter*} paramsTypes) {
@@ -363,7 +326,7 @@ class Registry {
                 = t.defaultConstructor?.declaration?.parameterDeclarations);
         value parameters =  parameterDeclarations.collect((e) {
             log.trace(() => "Registry.constructParameters: parameter-declaration: <``e.openType``>");
-            value closedType = closeOpenType(t, e.openType);
+            value closedType = resolveOpenType(t, e.openType);
             return Parameter(e.name, closedType, e.defaulted);
         });
         log.debug(() => "Registry.constructParameters: constructed parameters: <``parameters``>");
@@ -633,7 +596,7 @@ class GenericBox<T>(shared T t)  { }
 class GenericTrackCar<T>(shared GenericBox<T> box)  { }
 class GenericTanker<T,V>(GenericBox<T> box1, GenericBox<V> box2)  { }
 
-//tag("repl")
+tag("generic")
 test
 shared void registryShouldCreateInstanceWithOneGenericTypeDependency() {
     value registry = Registry { `GenericTrackCar<String>`, `GenericBox<String>`, "String item" };
@@ -641,7 +604,7 @@ shared void registryShouldCreateInstanceWithOneGenericTypeDependency() {
     assertIs(actual, `GenericTrackCar<String>`);
 }
 
-tag("repl")
+tag("generic")
 test
 shared void registryShouldCreateInstanceWithTwoGenericTypeDependency() {
     value registry = Registry {
