@@ -15,8 +15,7 @@ import ceylon.language.meta.declaration {
     OpenIntersection,
     OpenType,
     nothingType,
-    OpenInterfaceType,
-    TypeParameter
+    OpenInterfaceType
 }
 import ceylon.language.meta.model {
     Type,
@@ -31,7 +30,6 @@ import ceylon.logging {
     addLogWriter,
     writeSimpleLog,
     defaultPriority,
-    debug,
     trace
 }
 import ceylon.test {
@@ -252,50 +250,6 @@ class Registry {
         throw Exception(msg);
     }
 
-    "Gets container class and open type, which need to relolve"
-    Type<> resolveOpenType<T>(Class<T> parentClass, OpenType openType) {
-        switch(ot = openType)
-        case (is OpenClassType) {
-            log.debug(() => "closeOpenType: OpenClassType: ");
-            value resolvedTypes = resolveOpenTypes(parentClass, ot.typeArgumentList);
-            return ot.declaration.classApply<Anything>(*resolvedTypes);
-        }
-        case (is OpenInterfaceType) {
-            log.debug(() => "closeOpenType: OpenInterfaceType");
-            value resolvedTypes = resolveOpenTypes(parentClass, ot.typeArgumentList);
-            return ot.declaration.interfaceApply<Anything>(*resolvedTypes);
-        }
-        case (is OpenUnion) {
-            log.debug(() => "closeOpenType: OpenUnion");
-            value types = resolveOpenTypes(parentClass, ot.caseTypes);
-            assert(nonempty types);
-            return types.reduce<Type<>>((p, e) => p.union(e));
-        }
-        case (is OpenIntersection) {
-            log.debug(() => "closeOpenType: OpenIntersection");
-
-            value types = resolveOpenTypes(parentClass, ot.satisfiedTypes);
-            assert(nonempty types);
-            return types.reduce<Type<>>((p, e) => p.intersection(e));
-        }
-        case (is OpenTypeVariable){
-            log.debug(() => "closeOpenType: OpenTypeVariable");
-            // TODO: add variance checking (Vitaly 27.06.2018)
-            if(exists typeVar = parentClass.typeArguments[ot.declaration]) {
-                return typeVar;
-            }
-            throw Exception("Error while trying resolve OpenTypeVariable: "+
-                  "Haven't such type-var: ``ot.declaration`` in class ``parentClass``");
-        }
-        case (nothingType) {
-            log.debug(() => "closeOpenType: nothingType");
-            return nothing;
-        }
-    }
-
-    Type<>[] resolveOpenTypes(Class<> parentClass, List<OpenType> openTypes)
-            => [for (openType in openTypes) resolveOpenType(parentClass, openType)];
-
     {<String->Anything>*}
     instantiateParams<T>(Class<T> t, {Parameter*} paramsTypes) {
         log.debug(() => "Registry.instantiateParams: try to instantiate params: ``paramsTypes``");
@@ -334,21 +288,60 @@ class Registry {
     }
 }
 
+
+"Gets container class and open type, which need to relolve"
+Type<> resolveOpenType<T>(Class<T> parentClass, OpenType openType) {
+    switch(ot = openType)
+    case (is OpenClassType) {
+        log.debug(() => "resolveOpenType: OpenClassType: <``ot``>");
+        value resolvedTypes = resolveOpenTypes(parentClass, ot.typeArgumentList);
+        return ot.declaration.classApply<Anything>(*resolvedTypes);
+    }
+    case (is OpenInterfaceType) {
+        log.debug(() => "resolveOpenType: OpenInterfaceType: <``ot``>");
+        value resolvedTypes = resolveOpenTypes(parentClass, ot.typeArgumentList);
+        return ot.declaration.interfaceApply<Anything>(*resolvedTypes);
+    }
+    case (is OpenUnion) {
+        log.debug(() => "resolveOpenType: OpenUnion: <``ot``>");
+        value types = resolveOpenTypes(parentClass, ot.caseTypes);
+        assert(nonempty types);
+        return types.reduce<Type<>>((p, e) => p.union(e));
+    }
+    case (is OpenIntersection) {
+        log.debug(() => "resolveOpenType: OpenIntersection: <``ot``>");
+
+        value types = resolveOpenTypes(parentClass, ot.satisfiedTypes);
+        assert(nonempty types);
+        return types.reduce<Type<>>((p, e) => p.intersection(e));
+    }
+    case (is OpenTypeVariable){
+        log.debug(() => "resolveOpenType: OpenTypeVariable: <``ot``>");
+        // TODO: add variance checking (Vitaly 27.06.2018)
+        if(exists typeVar = parentClass.typeArguments[ot.declaration]) {
+            return typeVar;
+        }
+        throw Exception("Error while trying resolve OpenTypeVariable: "+
+        "Haven't such type-var: ``ot.declaration`` in class ``parentClass``");
+    }
+    case (nothingType) {
+        log.debug(() => "resolveOpenType: nothingType");
+        return nothing;
+    }
+}
+
+Type<>[] resolveOpenTypes(Class<> parentClass, List<OpenType> openTypes)
+        => [for (openType in openTypes) resolveOpenType(parentClass, openType)];
+
 // TODO move to reflectionTools.ceylon file
 [Class<T>, Class<Anything>, [Interface<Anything>*]]
 describeClass<T>(Class<T> clazz) {
     
     // Only for Anything class extended class = null;
-    assert(exists extendedClass =
-            clazz.declaration.extendedType
-                ?.declaration?.classApply<Anything>());
+    assert(exists extendedClassOpenType = clazz.declaration.extendedType);
+    assert(is Class<> extendedClass = resolveOpenType(clazz, extendedClassOpenType));
 
-    value interfaces =
-            if(nonempty interfaces = clazz.satisfiedTypes)
-            then interfaces.collect((iface)
-                => iface.declaration.interfaceApply<Anything>(*iface.typeArgumentList))
-            else [];
-
+    assert(is Interface<>[] interfaces =  clazz.satisfiedTypes);
     return [clazz, extendedClass, interfaces];
 }
 
@@ -618,6 +611,22 @@ shared void registryShouldCreateInstanceWithTwoGenericTypeDependency() {
     assertIs(actual, `GenericTanker<String, Integer>`);
 }
 
+class StringBox(String data) extends GenericBox<String>(data) { }
+class IntegerBox(Integer data) extends GenericBox<Integer>(data) { }
+
+tag("repl")
+test
+shared void registryShouldCreateInstanceWithTwoGenericTypeDependencyAndExtendedClasses() {
+    value registry = Registry {
+        `GenericTanker<String, Integer>`,
+        `StringBox`,
+        `IntegerBox`,
+        "String item",
+        101
+    };
+    value actual = registry.getInstance(`GenericTanker<String, Integer>`);
+    assertIs(actual, `GenericTanker<String, Integer>`);
+}
 // ============================ INTERFACE TESTS ================================
 
 tag("if")
