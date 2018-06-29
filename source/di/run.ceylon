@@ -51,6 +51,7 @@ shared void setupLogger() {
 
 // ----------------------------------------------------
 
+
 class Registry {
 
 //    class RegistryState(
@@ -79,11 +80,21 @@ class Registry {
     MutableMap<Interface<>, Class<>> interfaceComponents
             = HashMap<Interface<>, Class<>> {};
 
+    MutableMap<Class<>|Interface<>, Class<>> enchancerComponents
+            = HashMap<Class<>|Interface<>, Class<>> {};
+
+
+    // TODO: Implement registerEnchancer (Vitaly 29.06.2018)
+    shared void registerEnchnanser<T>(Class<T>|Interface<T> wrapped, [Class<>] wrappers) {
+
+    }
+
     shared void inspect() {
         print("---------------- REGISTRY INSPECTION -----------------");
         printAll({
             "interfaceComponents size: ``interfaceComponents.size``",
             "components size: ``components.size``",
+            "extendComponents size: ``extendComponents.size``",
             "parameters size: ``parameters.size``"
         }, "\n");
         if (!interfaceComponents.empty) {
@@ -93,6 +104,10 @@ class Registry {
         if (!components.empty) {
             print("-------------------- components ----------------------");
             printAll(components, "\n");
+        }
+        if (!extendComponents.empty) {
+            print("-------------------- extendComponents ----------------------");
+            printAll(extendComponents, "\n");
         }
         if (!parameters.empty) {
             print("-------------------- parameters ----------------------");
@@ -105,13 +120,16 @@ class Registry {
             {Class<>|Object*} components = empty,
             {[Class<>, String, Anything]*} parameters = empty) {
 
+        // TODO: Add filter to ceylon-base-classes (Vitaly 29.06.2018)
         value described = components.collect(describeComponent);
         this.components.putAll {
             for ([inst, clazz, *_] in described)
             clazz -> inst
         };
+
         this.extendComponents.putAll {
-            for ([_, clazz, extClazz, __] in described)
+            for ([_, clazz, extClazzez, __] in described)
+            for(extClazz in extClazzez)
             extClazz -> clazz
         };
         this.interfaceComponents.putAll {
@@ -141,9 +159,9 @@ class Registry {
     }
 
     shared void register<T>(Class<T>|Object typeOrInstance) {
-        value [inst, clazz, extClazz, ifaces] = describeComponent(typeOrInstance);
+        value [inst, clazz, extClazzez, ifaces] = describeComponent(typeOrInstance);
         components.put(clazz, inst);
-        extendComponents.put(extClazz, clazz);
+        extendComponents.putAll { for (extClazz in extClazzez) extClazz -> clazz };
         log.info("Registry.register: register " +
                     (if(exists inst) then "instance: <``inst``> for " else "") +
                 "type <``clazz``>");
@@ -177,13 +195,13 @@ class Registry {
     T instantiateClass<T>(Class<T> t) {
         // registered class
         if (components.defines(t)) {
-            log.debug(() => "Registry.getInstance: components has registered type <``t``>");
+            log.debug(() => "Registry.instantiateClass: components has registered type <``t``>");
             if (exists instance = components.get(t)) {
-                log.debug(() => "Registry.getInstance: components has instance for type <``t``>");
+                log.debug(() => "Registry.instantiateClass: components has instance for type <``t``>");
                 assert (is T instance);
                 return instance;
             } else {
-                log.debug(() => "Registry.getInstance: components has not instance for type <``t``>");
+                log.debug(() => "Registry.instantiateClass: components has not instance for type <``t``>");
                 value instance = tryToCreateInstance(t);
                 components.put(t, instance);
                 return instance;
@@ -191,11 +209,12 @@ class Registry {
         }
        // abstract class
         else if (exists tt = extendComponents[t]) {
+            log.debug(() => "Registry.instantiateClass: extendsComponents has registered type <``tt``> which extends type ``t``");
             value instance = instantiateClass(tt);
             assert (is T instance);
             return instance;
         }
-        log.error(() => "Registry.getInstance: components has not registered type ``t``");
+        log.error(() => "Registry.instantiateClass: components has not registered type ``t``");
         throw Exception("There are no such type in Registry <``t``>");
     }
 
@@ -217,22 +236,29 @@ class Registry {
         log.info(() => "Registry.getInstance: for type <``t``>");
         // interface
         if (is Interface<T> t) {
+            log.debug(() => "Registry.getInstance: <``t``> is a Interface");
             if(is Class<T> satisfiedClass = interfaceComponents.get(t)) {
                 log.debug(() => "Registry.getInstance: has registered type for interface <``t``>");
                 return instantiateClass(satisfiedClass);
             }
+            value msg = "Haven't registered types for interface: <``t``>";
+            log.error(() => "Registry.getInstance: ``msg``");
+            throw Exception(msg);
         }
         // class
         else if(is Class<T> t) {
+            log.debug(() => "Registry.getInstance: <``t``> is a Class");
             return instantiateClass(t);
         }
         // union
         else if(is UnionType<T> t) {
+            log.debug(() => "Registry.getInstance: <``t``> is an UnionType");
             assert(is T i = t.caseTypes.map(tryGetInstance).coalesced.first);
             return i;
         }
         // intersection
         else if(is IntersectionType<T> t) {
+            log.debug(() => "Registry.getInstance: <``t``> is an IntersectionType");
 
             value intersected = interfaceComponents
                 .filterKeys((iface) => iface in t.satisfiedTypes)
@@ -243,6 +269,9 @@ class Registry {
                 is Class<T> cl = intersected.key) {
                 return instantiateClass(cl);
             }
+            value msg = "Haven't registered types for interface intersection: <``t``>";
+            log.error(() => "Registry.getInstance: ``msg``");
+            throw Exception(msg);
         }
         // not found
         value msg = "Type is not interface nor class: <``t``>";
@@ -334,25 +363,45 @@ Type<>[] resolveOpenTypes(Class<> parentClass, List<OpenType> openTypes)
         => [for (openType in openTypes) resolveOpenType(parentClass, openType)];
 
 // TODO move to reflectionTools.ceylon file
-[Class<T>, Class<Anything>, [Interface<Anything>*]]
+[Class<T>, [Class<Anything>*], [Interface<Anything>*]]
 describeClass<T>(Class<T> clazz) {
     
-    // Only for Anything class extended class = null;
+    value extendedClazzez = describeClassHierarchyExceptBasicClasses(clazz);
+    assert(is Interface<>[] interfaces =  clazz.satisfiedTypes);
+    return [clazz, extendedClazzez, interfaces];
+}
+
+/*
+  describe full-hierarchy from first extended class to Basic class (exclusive)
+  <ceylon.language::Basic>
+  <ceylon.language::Object>
+  <ceylon.language::Anything>
+*/
+
+[Class<Anything>*]
+describeClassHierarchyExceptBasicClasses<T>(Class<T> clazz) {
+
+    // Only for Anything class extended-class = null;
     assert(exists extendedClassOpenType = clazz.declaration.extendedType);
     assert(is Class<> extendedClass = resolveOpenType(clazz, extendedClassOpenType));
-
-    assert(is Interface<>[] interfaces =  clazz.satisfiedTypes);
-    return [clazz, extendedClass, interfaces];
+    log.trace(() => "describeClassHierarchyExceptBasicClass:  ``extendedClass``");
+    if(extendedClass.exactly(`Basic`)
+       || extendedClass.exactly(`Object`)
+       || extendedClass.exactly(`Anything`)) {
+        log.trace(() => "describeClassHierarchyExceptBasicClass: reached Basic class");
+        return empty;
+    }
+    return [extendedClass, *describeClassHierarchyExceptBasicClasses(extendedClass)];
 }
 
 // TODO move to reflectionTools.ceylon file
-[T, Class<T>, Class<Anything>, [Interface<Anything>*]]
+[T, Class<T>, [Class<Anything>*], [Interface<Anything>*]]
 describeInstance<T>(T instance) {
     assert(is Class<T> clazz = type(instance));
     return [instance, *describeClass(clazz)];
 }
 
-[Anything, Class<>, Class<>, [Interface<>*]]
+[Anything, Class<>, [Class<>*], [Interface<>*]]
 describeComponent<T>(Class<T>|T comp) => switch(comp)
     case(is Class<T>) [null, *describeClass(comp)]
     else  describeInstance(comp);
@@ -362,7 +411,7 @@ describeComponent<T>(Class<T>|T comp) => switch(comp)
 test
 shared void describeClass_SouldReturnCorrectInfo_ForClassWithMultiInterfaces() {
     value actual = describeClass(`RuPostman`);
-    assertEquals(actual, [`RuPostman`, `Basic`, [`Postman`, `Operator`]]);
+    assertEquals(actual, [`RuPostman`, [], [`Postman`, `Operator`]]);
 }
 
 
@@ -372,10 +421,19 @@ shared void describeInstance_SouldReturnCorrectInfo_ForClassWithMultiInterfaces(
     value actual = describeInstance(postman);
     assertEquals {
         actual = actual;
-        expected = [postman, `RuPostman`, `Basic`, [`Postman`, `Operator`]];
+        expected = [postman, `RuPostman`, [], [`Postman`, `Operator`]];
     };
 }
 
+class One() { }
+class OneOne() extends One() { }
+class OneOneOne() extends OneOne() { }
+
+test
+shared void describeClassHierarhy_SouldReturnCorrectInfo_ForClassWithSeveralLevelInheritance() {
+    value actual = describeClassHierarchyExceptBasicClasses(`OneOneOne`);
+    assertEquals(actual, [`OneOne`, `One`]);
+}
 //
 //shared void run() {
 //    value registry = Registry();
@@ -473,7 +531,7 @@ shared void registryShouldCreateInstance_WithOneRegisteredDependencyType() {
 }
 
 test
-shared void registryShouldRegisterTypeWithInstanceInRegisterMethodCalled() {
+shared void registryShouldRegisterTypeWithInstanceInRegisterMethodCall() {
     value registry = Registry();
     registry.register(Box(Atom()));
     value box = registry.getInstance(`Box`);
@@ -547,7 +605,7 @@ shared void describeInstance_SouldReturnCorrectInfo_ForCaseClass() {
     assertEquals {
         actual = actual;
         // orange is class orange with signleton object
-        expected = [orange, type(orange), `Fruit`, []];
+        expected = [orange, type(orange), [`Fruit`], []];
     };
 }
 
@@ -612,9 +670,10 @@ shared void registryShouldCreateInstanceWithTwoGenericTypeDependency() {
 }
 
 class StringBox(String data) extends GenericBox<String>(data) { }
+class StringBox2(String data) extends StringBox(data) { }
 class IntegerBox(Integer data) extends GenericBox<Integer>(data) { }
 
-tag("repl")
+tag("generic")
 test
 shared void registryShouldCreateInstanceWithTwoGenericTypeDependencyAndExtendedClasses() {
     value registry = Registry {
@@ -627,7 +686,92 @@ shared void registryShouldCreateInstanceWithTwoGenericTypeDependencyAndExtendedC
     value actual = registry.getInstance(`GenericTanker<String, Integer>`);
     assertIs(actual, `GenericTanker<String, Integer>`);
 }
+
+tag("repl")
+test
+shared void registryShouldCreateInstanceWithTwoGenericTypeDependencyAndExtendedClasses2() {
+    value registry = Registry {
+        `GenericTanker<String, Integer>`,
+        `StringBox2`,
+        `IntegerBox`,
+        "String item",
+        101
+    };
+    registry.inspect();
+    value actual = registry.getInstance(`GenericTanker<String, Integer>`);
+    assertIs(actual, `GenericTanker<String, Integer>`);
+}
+
+class IntegerTanker(IntegerBox box1, IntegerBox box2) extends GenericTanker<Integer, Integer>(box1, box2) { }
+
+tag("generic")
+test
+shared void registryShouldCreateInstanceWithTwoGenericTypeDependencyAndExtendedClasses3() {
+    value registry = Registry {
+        `IntegerTanker`,
+        `StringBox`,
+        `IntegerBox`,
+        "String item",
+        101
+    };
+    value actual = registry.getInstance(`IntegerTanker`);
+    assertIs(actual, `IntegerTanker`);
+}
+// ============================ GENERIC TYPES WITH VARIANCES ================================
+
+class Bike() { }
+class CrossBike() extends Bike() { }
+class ElectroBike() extends CrossBike() { }
+
+class CrossBykeParking(CrossBike bike)  { }
+//
+class BikeBox<BikeType>(BikeType bike)  { }
+
+// invariant or CONTRvariant
+class Bicycler<BikeType>(BikeType bike)  {
+    shared void tryBike(BikeType bike) {}
+}
+
+// invariant or covariant
+class BikeSeller<BikeType>(BikeType bike)  {
+    shared BikeType sell(Integer money) => bike;
+}
+
+//tag("repl")
+//test
+//shared void registryShouldCreateInstanceWithInvariantDependency() {
+//    value registry = Registry {
+//        `Bicycler<CrossBike>`,
+//        `CrossBike`
+//    };
+//    value actual = registry.getInstance(`Bicycler<CrossBike>`);
+//    assertIs(actual, `Bicycler<CrossBike>`);
+//}
+
+//tag("repl")
+//test
+//shared void registryShouldCreateInstanceWithContrvariantDependency() {
+//    value registry = Registry {
+//        `Bicycler<CrossBike>`,
+//        `Bike`
+//    };
+//    value actual = registry.getInstance(`Bicycler<CrossBike>`);
+//    assertIs(actual, `Bicycler<CrossBike>`);
+//}
+
+tag("generic")
+test
+shared void registryShouldCreateInstanceWithExtendedTypeDependency() {
+    value registry = Registry {
+        `Bicycler<CrossBike>`,
+        `ElectroBike`
+    };
+    value actual = registry.getInstance(`Bicycler<CrossBike>`);
+    assertIs(actual, `Bicycler<CrossBike>`);
+}
+
 // ============================ INTERFACE TESTS ================================
+
 
 tag("if")
 test
