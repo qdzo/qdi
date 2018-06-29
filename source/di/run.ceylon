@@ -377,7 +377,6 @@ describeClass<T>(Class<T> clazz) {
   <ceylon.language::Object>
   <ceylon.language::Anything>
 */
-
 [Class<Anything>*]
 describeClassHierarchyExceptBasicClasses<T>(Class<T> clazz) {
 
@@ -388,7 +387,7 @@ describeClassHierarchyExceptBasicClasses<T>(Class<T> clazz) {
     if(extendedClass.exactly(`Basic`)
        || extendedClass.exactly(`Object`)
        || extendedClass.exactly(`Anything`)) {
-        log.trace(() => "describeClassHierarchyExceptBasicClass: reached Basic class");
+        log.trace(() => "describeClassHierarchyExceptBasicClass: reached Basic class (or some lower)");
         return empty;
     }
     return [extendedClass, *describeClassHierarchyExceptBasicClasses(extendedClass)];
