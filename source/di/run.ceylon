@@ -36,8 +36,7 @@ import ceylon.test {
     assertEquals,
     assertThatException,
     tag,
-    beforeTestRun,
-    beforeTest
+    beforeTestRun
 }
 
 Logger log = logger(`module di`);
@@ -67,17 +66,107 @@ class Registry {
 //    }
 
 
+    class MetaRegistry {
+
+        MutableMap<Class<>, Class<>>
+        extendComponents = HashMap<Class<>, Class<>> {};
+
+        MutableMap<Interface<>, Class<>>
+        interfaceComponents = HashMap<Interface<>, Class<>> {};
+
+        shared new({Class<Anything>*} components = empty) {
+
+            value described = components.collect(describeClass);
+            this.extendComponents.putAll {
+                for ([clazz, extClazzez, __] in described)
+                for(extClazz in extClazzez)
+                extClazz -> clazz
+            };
+            this.interfaceComponents.putAll {
+                for ([clazz, __, ifaces] in described)
+                for (iface in ifaces)
+                iface -> clazz
+            };
+        }
+
+        shared [Class<>*] getAppropriateClassFor<T>(Type<T> t) {
+            if (is Interface<T> t) {
+                log.debug(() => "MetaRegistry.getAppropriateTypeFor: <``t``> is a Interface");
+                if(is Class<T> satisfiedClass = interfaceComponents.get(t)) {
+                    log.debug(() => "MetaRegistry.getAppropriateTypeFor: has registered type for interface <``t``>");
+                    return [satisfiedClass];
+                }
+                log.warn(() => "MetaRegistry.getAppropriateTypeFor: Haven't registered types for interface: <``t``>");
+                return empty;
+            }
+            // class
+            else if(is Class<T> t) {
+                log.debug(() => "MetaRegistry.getAppropriateTypeFor: <``t``> is a Class");
+                if(is Class<T> extendedClass = extendComponents.get(t)) {
+                    log.debug(() => "MetaRegistry.getAppropriateTypeFor: has registered type for interface <``t``>");
+                    return [extendedClass];
+                }
+                log.warn(() => "MetaRegistry.getAppropriateTypeFor: Haven't registered types for interface: <``t``>");
+                return empty;
+            }
+            // union
+            else if(is UnionType<T> t) {
+                log.debug(() => "MetaRegistry.getAppropriateTypeFor: <``t``> is an UnionType");
+                return concatenate(t.caseTypes.narrow<Class<>>(), t.caseTypes.flatMap(getAppropriateClassFor));
+            }
+            // intersection
+            else if(is IntersectionType<T> t) {
+                log.debug(() => "MetaRegistry.getAppropriateTypeFor: <``t``> is an IntersectionType");
+
+                value intersected = interfaceComponents
+                    .filterKeys((iface) => iface in t.satisfiedTypes)
+                    .inverse()
+                    .find((clazz -> ifaces) => ifaces.every((iface) => iface in t.satisfiedTypes));
+
+                if(exists intersected,
+                    is Class<T> cl = intersected.key) {
+                    return [cl];
+                }
+                log.warn(() => "MetaRegistry.getAppropriateTypeFor: Haven't registered types for interface intersection: <``t``>");
+                return empty;
+            }
+            // not found
+            log.warn(() => "MetaRegistry.getAppropriateTypeFor: Type is not interface nor class: <``t``>");
+            return empty;
+        }
+
+        shared void registerMetaInfoForType<T>(Class<T> t) {
+            log.info("MetaRegistry.describeAndRegisterType: register type <``t``>");
+            value [clazz, extClazzez, ifaces] = describeClass(t);
+            extendComponents.putAll { for (extClazz in extClazzez) extClazz -> clazz };
+            interfaceComponents.putAll { for (iface in ifaces) iface -> clazz };
+        }
+
+        shared void inspect() {
+            print("---------------- META-REGISTRY INSPECTION -----------------");
+            printAll({
+                "interfaceComponents size: ``interfaceComponents.size``",
+                "extendComponents size: ``extendComponents.size``"
+            }, "\n");
+            if (!interfaceComponents.empty) {
+                print("------------------ interfacesComponenets ------------------");
+                printAll(interfaceComponents, "\n");
+            }
+            if (!extendComponents.empty) {
+                print("-------------------- extendComponents ----------------------");
+                printAll(extendComponents, "\n");
+            }
+            print("------------------------------------------------------------");
+        }
+    }
+
+    late MetaRegistry metaRegistry;
+
     MutableMap<[Class<>, String], Anything> parameters
             = HashMap<[Class<>, String], Anything> {};
 
     MutableMap<Class<>, Anything> components
             = HashMap<Class<>, Anything> {};
-
-    MutableMap<Class<>, Class<>> extendComponents
-            = HashMap<Class<>, Class<>> {};
-
-    MutableMap<Interface<>, Class<>> interfaceComponents
-            = HashMap<Interface<>, Class<>> {};
 
     MutableMap<Class<>|Interface<>, Class<>> enchancerComponents
             = HashMap<Class<>|Interface<>, Class<>> {};
@@ -91,50 +180,28 @@ class Registry {
     shared void inspect() {
         print("---------------- REGISTRY INSPECTION -----------------");
         printAll({
-            "interfaceComponents size: ``interfaceComponents.size``",
             "components size: ``components.size``",
-            "extendComponents size: ``extendComponents.size``",
             "parameters size: ``parameters.size``"
         }, "\n");
-        if (!interfaceComponents.empty) {
-            print("--------------- interfacesComponenets ----------------");
-            printAll(interfaceComponents, "\n");
-        }
         if (!components.empty) {
             print("-------------------- components ----------------------");
             printAll(components, "\n");
-        }
-        if (!extendComponents.empty) {
-            print("-------------------- extendComponents ----------------------");
-            printAll(extendComponents, "\n");
         }
         if (!parameters.empty) {
             print("-------------------- parameters ----------------------");
             printAll(parameters, "\n");
         }
         print("------------------------------------------------------");
+        metaRegistry.inspect();
     }
 
     shared new(
             {Class<>|Object*} components = empty,
             {[Class<>, String, Anything]*} parameters = empty) {
 
-        value described = components.collect(describeComponent);
-        this.components.putAll {
-            for ([inst, clazz, *_] in described)
-            clazz -> inst
-        };
-
-        this.extendComponents.putAll {
-            for ([_, clazz, extClazzez, __] in described)
-            for(extClazz in extClazzez)
-            extClazz -> clazz
-        };
-        this.interfaceComponents.putAll {
-            for ([_, clazz, __, ifaces] in described)
-            for (iface in ifaces)
-            iface -> clazz
-        };
+        value classInstencePairs = components.collect(getClassInstancePair);
+        this.components.putAll(classInstencePairs);
+        this.metaRegistry = MetaRegistry(classInstencePairs*.key);
         this.parameters.putAll {
             for ([type, paramName, val] in parameters)
             [type, paramName] -> val
@@ -157,13 +224,13 @@ class Registry {
     }
 
     shared void register<T>(Class<T>|Object typeOrInstance) {
-        value [inst, clazz, extClazzez, ifaces] = describeComponent(typeOrInstance);
+        value clazz->inst = getClassInstancePair(typeOrInstance);
         components.put(clazz, inst);
-        extendComponents.putAll { for (extClazz in extClazzez) extClazz -> clazz };
+        metaRegistry.registerMetaInfoForType(clazz);
+
         log.info("Registry.register: register " +
                     (if(exists inst) then "instance: <``inst``> for " else "") +
                 "type <``clazz``>");
-        interfaceComponents.putAll { for (iface in ifaces) iface -> clazz };
     }
 
     T tryToCreateInstance<T>(Class<T> t) {
@@ -190,30 +257,24 @@ class Registry {
         }
     }
 
-    T instantiateClass<T>(Class<T> t) {
+    T? instantiateClass<T>(Class<T> t) {
+        log.debug(() => "Registry.instantiateClass: started for type <``t``>");
         // registered class
         if (components.defines(t)) {
-            log.debug(() => "Registry.instantiateClass: components has registered type <``t``>");
+            log.trace(() => "Registry.instantiateClass: components has registered type <``t``>");
             if (exists instance = components.get(t)) {
-                log.debug(() => "Registry.instantiateClass: components has instance for type <``t``>");
+                log.debug(() => "Registry.instantiateClass: instance for type <``t``> already instantiated");
                 assert (is T instance);
                 return instance;
-            } else {
-                log.debug(() => "Registry.instantiateClass: components has not instance for type <``t``>");
-                value instance = tryToCreateInstance(t);
-                components.put(t, instance);
-                return instance;
             }
-        }
-       // abstract class
-        else if (exists tt = extendComponents[t]) {
-            log.debug(() => "Registry.instantiateClass: extendsComponents has registered type <``tt``> which extends type ``t``");
-            value instance = instantiateClass(tt);
-            assert (is T instance);
+            log.trace(() => "Registry.instantiateClass: components has not instance for type <``t``>");
+            value instance = tryToCreateInstance(t);
+            components.put(t, instance);
+            log.debug(() => "Registry.instantiateClass: instance created for type <``t``>");
             return instance;
         }
-        log.error(() => "Registry.instantiateClass: components has not registered type ``t``");
-        throw Exception("There are no such type in Registry <``t``>");
+        log.debug(() => "Registry.instantiateClass: haven't registered type <``t``>");
+        return null;
     }
 
     T? tryGetInstance<T>(Type<T> t) {
@@ -232,49 +293,24 @@ class Registry {
 
     shared T getInstance<T>(Type<T> t) {
         log.info(() => "Registry.getInstance: for type <``t``>");
-        // interface
-        if (is Interface<T> t) {
-            log.debug(() => "Registry.getInstance: <``t``> is a Interface");
-            if(is Class<T> satisfiedClass = interfaceComponents.get(t)) {
-                log.debug(() => "Registry.getInstance: has registered type for interface <``t``>");
-                return instantiateClass(satisfiedClass);
-            }
-            value msg = "Haven't registered types for interface: <``t``>";
-            log.error(() => "Registry.getInstance: ``msg``");
-            throw Exception(msg);
-        }
-        // class
-        else if(is Class<T> t) {
+        // for class
+        if(is Class<T> t) {
             log.debug(() => "Registry.getInstance: <``t``> is a Class");
-            return instantiateClass(t);
+            if(exists instance = instantiateClass(t)){
+                return instance;
+            } else {
+                value appropriateClasses = metaRegistry.getAppropriateClassFor(t);
+                assert(is T i = appropriateClasses.map(instantiateClass).coalesced.first);
+                return i;
+            }
         }
-        // union
-        else if(is UnionType<T> t) {
-            log.debug(() => "Registry.getInstance: <``t``> is an UnionType");
-            assert(is T i = t.caseTypes.map(tryGetInstance).coalesced.first);
+        // for other types: Interface / UnionType / IntersectionType
+        log.debug(() => "Registry.getInstance: <``t``> is not a Class");
+        value appropriateClasses = metaRegistry.getAppropriateClassFor(t);
+        if(is T i = appropriateClasses.map(instantiateClass).coalesced.first){
             return i;
         }
-        // intersection
-        else if(is IntersectionType<T> t) {
-            log.debug(() => "Registry.getInstance: <``t``> is an IntersectionType");
-
-            value intersected = interfaceComponents
-                .filterKeys((iface) => iface in t.satisfiedTypes)
-                .inverse()
-                .find((clazz -> ifaces) => ifaces.every((iface) => iface in t.satisfiedTypes));
-            
-            if(exists intersected,
-                is Class<T> cl = intersected.key) {
-                return instantiateClass(cl);
-            }
-            value msg = "Haven't registered types for interface intersection: <``t``>";
-            log.error(() => "Registry.getInstance: ``msg``");
-            throw Exception(msg);
-        }
-        // not found
-        value msg = "Type is not interface nor class: <``t``>";
-        log.error(() => "Registry.getInstance: ``msg``");
-        throw Exception(msg);
+        throw Exception("Registry.getInstance: can't createInstance for class <``t``>");
     }
 
     {<String->Anything>*}
@@ -413,6 +449,15 @@ getClassHierarchyExceptBasicClasses<T>(Class<T> clazz) {
 describeInstance<T>(T instance) {
     assert(is Class<T> clazz = type(instance));
     return [instance, *describeClass(clazz)];
+}
+
+
+Class<> -> Anything getClassInstancePair<T>(Class<T>|T classOrInstance) {
+    if(is Class<T> classOrInstance) {
+        return classOrInstance->null;
+    }
+    assert(is Class<T> clazz = type(classOrInstance));
+    return clazz -> classOrInstance;
 }
 
 [Anything, Class<>, [Class<>*], [Interface<>*]]
