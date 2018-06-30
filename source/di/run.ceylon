@@ -168,13 +168,14 @@ class Registry {
     MutableMap<Class<>, Anything> components
             = HashMap<Class<>, Anything> {};
 
-    MutableMap<Class<>|Interface<>, Class<>> enchancerComponents
-            = HashMap<Class<>|Interface<>, Class<>> {};
+    MutableMap<Class<>|Interface<>, [Class<>+]> enchancerComponents
+            = HashMap<Class<>|Interface<>, [Class<>+]> {};
 
 
     // TODO: Implement registerEnchancer (Vitaly 29.06.2018)
-    shared void registerEnchnanser<T>(Class<T>|Interface<T> wrapped, [Class<>] wrappers) {
-
+    shared void registerEnchancer<T>(Class<T>|Interface<T> wrapped, [Class<>+] wrappers) {
+//        checkEnchancer
+        enchancerComponents.put(wrapped, wrappers);
     }
 
     shared void inspect() {
@@ -237,12 +238,12 @@ class Registry {
         try {
             log.debug(() => "Registry.tryToCreateInstance: class <``t``>");
             value paramsWithTypes = constructParameters(t);
-            if (paramsWithTypes.empty) {
-                log.trace(() => "Registry.tryToCreateInstance: default constructor for type <``t``> is without parameters");
-                value instance = t.apply();
-                log.debug("Registry.tryToCreateInstance: instance created for type <``t``>");
-                return instance;
-            }
+//            if (paramsWithTypes.empty) {
+//                log.trace(() => "Registry.tryToCreateInstance: default constructor for type <``t``> is without parameters");
+//                value instance = t.apply();
+//                log.debug("Registry.tryToCreateInstance: instance created for type <``t``>");
+//                return instance;
+//            }
             log.trace(() => "Registry.tryToCreateInstance: default constructor for "+
                       "type <``t``> has ``paramsWithTypes.size`` parameters");
             value params = instantiateParams(t, paramsWithTypes);
@@ -300,8 +301,10 @@ class Registry {
                 return instance;
             } else {
                 value appropriateClasses = metaRegistry.getAppropriateClassFor(t);
-                assert(is T i = appropriateClasses.map(instantiateClass).coalesced.first);
-                return i;
+                if(is T i = appropriateClasses.map(instantiateClass).coalesced.first) {
+                    return i;
+                }
+                throw Exception("Registry.getInstance: can't create instance for class <``t``>");
             }
         }
         // for other types: Interface / UnionType / IntersectionType
@@ -316,29 +319,28 @@ class Registry {
     {<String->Anything>*}
     instantiateParams<T>(Class<T> t, {Parameter*} paramsTypes) {
         log.debug(() => "Registry.instantiateParams: try to instantiate params: ``paramsTypes``");
-        value instantiatedParams = paramsTypes.map (
-                    (Parameter parameter) {
-                if(exists paramVal = parameters[[t, parameter.name]]) {
-                    log.trace(() => "Registry.instantiateParams: found registered parameter for : [``t``,``parameter.name``]");
-                    return parameter.name -> paramVal;
-                } else {
-                    log.trace(() => "Registry.instantiateParams: try to initiate parameter <``parameter.name``> needed for class <``t``>");
-                    value closeType = parameter.type;
-                    value depInstance = tryGetInstance(closeType);
-                    if(exists depInstance) {
-                        log.trace(() => "Registry.instantiateParams: parameter <``parameter.name``> initialized");
-                        return parameter.name -> depInstance;
-                    }
-                    log.trace(() => "Registry.instantiateParams: parameter <``parameter.name``>(``t``) NOT initialized.");
-                    if(parameter.defaulted) {
-                        log.trace(() => "Registry.instantiateParams: parameter <``parameter.name``>(``t``) has default value in class.");
-                        return null;
-                    }
-                    throw Exception("Unresolved dependency <``parameter.name``> (``parameter.type``) for class <``t``>");
-                }
+        return paramsTypes.map(instantiateParameter(t)).coalesced;
+    }
+    
+    <String->Anything>? instantiateParameter<T>(Class<T> t)(Parameter parameter) {
+        if(exists paramVal = parameters[[t, parameter.name]]) {
+            log.trace(() => "Registry.instantiateParameter: found registered parameter for : [``t``,``parameter.name``]");
+            return parameter.name -> paramVal;
+        } else {
+            log.trace(() => "Registry.instantiateParameter: try to initiate parameter <``parameter.name``> needed for class <``t``>");
+            value closeType = parameter.type;
+            value depInstance = tryGetInstance(closeType);
+            if(exists depInstance) {
+                log.trace(() => "Registry.instantiateParameter: parameter <``parameter.name``> initialized");
+                return parameter.name -> depInstance;
             }
-        ).coalesced;
-        return instantiatedParams;
+            log.trace(() => "Registry.instantiateParameter: parameter <``parameter.name``>(``t``) NOT initialized.");
+            if(parameter.defaulted) {
+                log.trace(() => "Registry.instantiateParameter: parameter <``parameter.name``>(``t``) has default value in class.");
+                return null;
+            }
+            throw Exception("Unresolved dependency <``parameter.name``> (``parameter.type``) for class <``t``>");
+        }
     }
 
     {Parameter*} constructParameters<T>(Class<T> t) {
@@ -346,6 +348,7 @@ class Registry {
         
         assert(exists parameterDeclarations
                 = t.defaultConstructor?.declaration?.parameterDeclarations);
+        
         value parameters =  parameterDeclarations.collect((e) {
             log.trace(() => "Registry.constructParameters: parameter-declaration: <``e.openType``>");
             value closedType = resolveOpenType(t, e.openType);
@@ -886,8 +889,8 @@ shared void registryShouldReturnSameInstanceForGivenTwoInterfaces() {
 // ========================= ABSTRACT TYPES ==========================
 
 abstract class Animal() {}
-class Dog() extends Animal() { }
-class Cat() extends Animal() { }
+class Dog() extends Animal() {}
+class Cat() extends Animal() {}
 
 
 tag("abstract")
@@ -897,4 +900,63 @@ shared void registryShouldCreateInstanceForAbstractClass() {
     value animal = registry.getInstance(`Animal`);
     assertIs(animal, `Dog`);
 }
+
+// ========================= ENCHANCERS ==========================
+
+interface Service {
+    shared formal String connection;
+}
+
+class DbService(String dbName) satisfies Service {
+    connection = dbName;
+}
+
+class ServiceDbSchemaDecorator(Service service, String dbType) satisfies Service {
+    connection => "``dbType``://" + service.connection;
+}
+
+class ServiceBdCredetionalsDecorator(
+        Service service,
+        String user,
+        String password)
+        satisfies Service {
+    connection => "``user``:``password``@" + service.connection;
+}
+
+class FakeDecorator() { }
+
+tag("enchancer")
+test
+shared void registryShouldCreateInstanceWithGivenEnchancer() {
+    value registry = Registry {`Service`, "users"};
+    registry.registerEnchancer(`Service`, [`ServiceDbSchemaDecorator`]);
+    value service = registry.getInstance(`DbService`);
+    assertIs(service, `ServiceDbSchemaDecorator`);
+    assertEquals(service.connection, "users://users");
+}
+
+tag("enchancer")
+test
+shared void registryShouldThrowExceptionWhenRegisterEnchancerWithWrongInterface() {
+    value registry = Registry {`Service`, "users"};
+    assertThatException(() => registry.registerEnchancer(`Service`, [`FakeDecorator`]));
+}
+
+tag("enchancer")
+test
+shared void registryShouldCreateInstanceWithTwoGivenEnchancers() {
+    value registry = Registry {
+        components = {DbService("users")};
+        parameters = {
+            [`ServiceBdCredetionalsDecorator`, "user", "qdzo"],
+            [`ServiceBdCredetionalsDecorator`, "password", "secret"],
+            [`ServiceDbSchemaDecorator`, "dbType", "inmemory"]
+        };
+    };
+    registry.registerEnchancer(`Service`, [`ServiceBdCredetionalsDecorator`,`ServiceDbSchemaDecorator`]);
+    value service = registry.getInstance(`DbService`);
+    assertIs(service, `ServiceDbSchemaDecorator`);
+    assertEquals(service.connection, "qdzo:secret@inmemory://users");
+}
+//shared void registerEnchancer<T>(Class<T>|Interface<T> wrapped, [Class<>] wrappers) {
 
