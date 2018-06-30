@@ -2,9 +2,6 @@ import ceylon.collection {
     MutableMap,
     HashMap
 }
-import ceylon.language {
-    ceylonPrint=print
-}
 import ceylon.language.meta {
     type
 }
@@ -30,7 +27,8 @@ import ceylon.logging {
     addLogWriter,
     writeSimpleLog,
     defaultPriority,
-    trace
+    trace,
+    info
 }
 import ceylon.test {
     test,
@@ -38,7 +36,8 @@ import ceylon.test {
     assertEquals,
     assertThatException,
     tag,
-    beforeTestRun
+    beforeTestRun,
+    beforeTest
 }
 
 Logger log = logger(`module di`);
@@ -46,7 +45,7 @@ Logger log = logger(`module di`);
 beforeTestRun
 shared void setupLogger() {
     addLogWriter(writeSimpleLog);
-    defaultPriority = trace;
+    defaultPriority = info;
 }
 
 // ----------------------------------------------------
@@ -120,7 +119,6 @@ class Registry {
             {Class<>|Object*} components = empty,
             {[Class<>, String, Anything]*} parameters = empty) {
 
-        // TODO: Add filter to ceylon-base-classes (Vitaly 29.06.2018)
         value described = components.collect(describeComponent);
         this.components.putAll {
             for ([inst, clazz, *_] in described)
@@ -175,7 +173,7 @@ class Registry {
             if (paramsWithTypes.empty) {
                 log.trace(() => "Registry.tryToCreateInstance: default constructor for type <``t``> is without parameters");
                 value instance = t.apply();
-                log.info("Registry.tryToCreateInstance: instance created for type <``t``>");
+                log.debug("Registry.tryToCreateInstance: instance created for type <``t``>");
                 return instance;
             }
             log.trace(() => "Registry.tryToCreateInstance: default constructor for "+
@@ -285,14 +283,19 @@ class Registry {
         value instantiatedParams = paramsTypes.map (
                     (Parameter parameter) {
                 if(exists paramVal = parameters[[t, parameter.name]]) {
+                    log.trace(() => "Registry.instantiateParams: found registered parameter for : [``t``,``parameter.name``]");
                     return parameter.name -> paramVal;
                 } else {
+                    log.trace(() => "Registry.instantiateParams: try to initiate parameter <``parameter.name``> needed for class <``t``>");
                     value closeType = parameter.type;
                     value depInstance = tryGetInstance(closeType);
                     if(exists depInstance) {
+                        log.trace(() => "Registry.instantiateParams: parameter <``parameter.name``> initialized");
                         return parameter.name -> depInstance;
                     }
+                    log.trace(() => "Registry.instantiateParams: parameter <``parameter.name``>(``t``) NOT initialized.");
                     if(parameter.defaulted) {
+                        log.trace(() => "Registry.instantiateParams: parameter <``parameter.name``>(``t``) has default value in class.");
                         return null;
                     }
                     throw Exception("Unresolved dependency <``parameter.name``> (``parameter.type``) for class <``t``>");
@@ -365,10 +368,24 @@ Type<>[] resolveOpenTypes(Class<> parentClass, List<OpenType> openTypes)
 // TODO move to reflectionTools.ceylon file
 [Class<T>, [Class<Anything>*], [Interface<Anything>*]]
 describeClass<T>(Class<T> clazz) {
-    
-    value extendedClazzez = describeClassHierarchyExceptBasicClasses(clazz);
-    assert(is Interface<>[] interfaces =  clazz.satisfiedTypes);
+
+    value extendedClazzez = getClassHierarchyExceptBasicClasses(clazz);
+    value interfaces =  getInterfaceHierarhyExeptBasicTypes(clazz);
     return [clazz, extendedClazzez, interfaces];
+}
+
+[Class<>+] basicTypes = [`String`, `Integer`, `Float`, `Boolean`, `Character`, `Basic`, `Object`, `Anything`];
+Boolean isBasicType(Type<> t) => any { for (bt in basicTypes) t.exactly(bt) };
+
+[Interface<>*] getInterfaceHierarhyExeptBasicTypes<T>(Interface<T>|Class<T> ifaceOrClass) {
+    if(isBasicType(ifaceOrClass)){
+        return empty;
+    }
+    return getInterfaceHierarhy(ifaceOrClass);
+}
+[Interface<>*] getInterfaceHierarhy<T>(Interface<T>|Class<T> ifaceOrClass) {
+    assert(is Interface<>[] ifaces =  ifaceOrClass.satisfiedTypes);
+    return concatenate(ifaces, ifaces.flatMap(getInterfaceHierarhy));
 }
 
 /*
@@ -378,19 +395,17 @@ describeClass<T>(Class<T> clazz) {
   <ceylon.language::Anything>
 */
 [Class<Anything>*]
-describeClassHierarchyExceptBasicClasses<T>(Class<T> clazz) {
+getClassHierarchyExceptBasicClasses<T>(Class<T> clazz) {
 
     // Only for Anything class extended-class = null;
     assert(exists extendedClassOpenType = clazz.declaration.extendedType);
     assert(is Class<> extendedClass = resolveOpenType(clazz, extendedClassOpenType));
     log.trace(() => "describeClassHierarchyExceptBasicClass:  ``extendedClass``");
-    if(extendedClass.exactly(`Basic`)
-       || extendedClass.exactly(`Object`)
-       || extendedClass.exactly(`Anything`)) {
+    if(isBasicType(extendedClass)) {
         log.trace(() => "describeClassHierarchyExceptBasicClass: reached Basic class (or some lower)");
         return empty;
     }
-    return [extendedClass, *describeClassHierarchyExceptBasicClasses(extendedClass)];
+    return [extendedClass, *getClassHierarchyExceptBasicClasses(extendedClass)];
 }
 
 // TODO move to reflectionTools.ceylon file
@@ -430,9 +445,25 @@ class OneOneOne() extends OneOne() { }
 
 test
 shared void describeClassHierarhy_SouldReturnCorrectInfo_ForClassWithSeveralLevelInheritance() {
-    value actual = describeClassHierarchyExceptBasicClasses(`OneOneOne`);
+    value actual = getClassHierarchyExceptBasicClasses(`OneOneOne`);
     assertEquals(actual, [`OneOne`, `One`]);
 }
+
+interface A {}
+interface B {}
+interface C {}
+interface AB satisfies A & B {}
+interface ABC satisfies AB & C {}
+class Clazz() satisfies ABC { }
+
+tag("d")
+test
+shared void describeClassInterfaces_SouldReturnCorrectInfo_ForClassWithSeveralNestedInterfaces() {
+//    value actual = describeClassInterfaces(`Clazz`);
+    value actual = getInterfaceHierarhy(`Clazz`);
+    assertEquals(actual, [`ABC`, `AB`, `C`, `A`, `B`]);
+}
+//
 //
 //shared void run() {
 //    value registry = Registry();
