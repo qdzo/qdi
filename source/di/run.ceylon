@@ -967,7 +967,7 @@ test
 shared void registryShouldCreateInstanceWithGivenEnchancer() {
     value registry = Registry {`DbService`, "users"};
     registry.registerEnchancer(`DbService`, [`ServiceDbSchemaDecorator`]);
-    value service = registry.getInstance(`DbService`);
+    value service = registry.getInstance(`Service`);
     assertIs(service, `ServiceDbSchemaDecorator`);
     assertEquals(service.connection, "users://users");
 }
