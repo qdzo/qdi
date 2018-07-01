@@ -45,7 +45,7 @@ Logger log = logger(`module di`);
 beforeTestRun
 shared void setupLogger() {
     addLogWriter(writeSimpleLog);
-    defaultPriority = info;
+    defaultPriority = trace;
 }
 
 // ----------------------------------------------------
@@ -286,15 +286,25 @@ class Registry {
     T|Exception instantiateClassWithEnchancer<T>(Class<T> t) {
         T|Exception instanceOrEx = tryToCreateInstanceAndCacheIt(t);
         if(is T instance = instanceOrEx) {
+            log.debug(() => "Registry.instantiateClassWithEnchancer: instance created for type <``t``>");
             if(nonempty enchancers = enchancerComponents.getOrDefault(t, [])) {
-                value e = enchancers.first;
-                value params = constructParameters(e);
-                value [instanceParam, otherParams] = removeInstanceParameter(params, instance);
-                value instantiatedOtherParams = instantiateParameters(e, otherParams);
-                value wrapped = e.namedApply(
-                    instantiatedOtherParams.follow(
-                        bindParameterWithValue(instanceParam, instance)));
-                assert(is T wrapped);
+                log.debug(() => "Registry.instantiateClassWithEnchancer: has registered enchancers for type <``t``>");
+                variable T wrapped = instance;
+                for (e in enchancers) {
+                    value params = constructParameters(e);
+                    value [instanceParam, otherParams] = splitByFilter(params, (Parameter p) => p.type.typeOf(instance));
+                    value instantiatedOtherParams = instantiateParameters(e, otherParams);
+
+                    value fullParams = expand {
+                        instantiatedOtherParams,
+                        instanceParam.map(bindParameterWithValue(wrapped))
+                    };
+                    assert(is T newWrapped = e.namedApply(fullParams));
+                    log.trace(() => "Registry.instantiateClassWithEnchancer: create wrapper <``e``> for type <``t``>");
+                    wrapped = newWrapped;
+                }
+//                assert(is T wrapped);
+                log.debug(() => "Registry.instantiateClassWithEnchancer: instance of <``t``> successfully wrapped");
                 return wrapped;
             }
             return instance;
@@ -303,17 +313,11 @@ class Registry {
         }
     }
 
-    [Parameter, {Parameter*}] removeInstanceParameter<T>({Parameter*} coll, T instance) {
-        value [insParam, otherParams] = splitByFilter(coll, (Parameter p) => p.type.typeOf(instance));
-        assert(exists fparam = insParam.first);
-        return [fparam, otherParams];
-    }
-
     [{Entity*}, {Entity*}] splitByFilter<Entity>(
             {Entity*} coll, Boolean pred(Entity p))
             => [ coll.filter(pred), coll.filter(not(pred)) ];
 
-    String->T bindParameterWithValue<T>(Parameter param, T val)
+    String->T bindParameterWithValue<T>(T val)(Parameter param)
             => param.name->val;
 
     T? tryFindAndGetApproproateInstance<T>(Type<T> t) {
@@ -325,7 +329,7 @@ class Registry {
 
         value firstPotentiallyCreated =
                 appropriateClasses
-                    .map(tryToCreateInstanceAndCacheIt)
+                    .map(instantiateClassWithEnchancer)
                     .find((element) => !(element is Exception));
 
         if(is T i = firstPotentiallyCreated) {
@@ -958,12 +962,11 @@ class ServiceBdCredetionalsDecorator(
 
 class FakeDecorator() { }
 
-ignore()
 tag("enchancer")
 test
 shared void registryShouldCreateInstanceWithGivenEnchancer() {
-    value registry = Registry {`Service`, "users"};
-    registry.registerEnchancer(`Service`, [`ServiceDbSchemaDecorator`]);
+    value registry = Registry {`DbService`, "users"};
+    registry.registerEnchancer(`DbService`, [`ServiceDbSchemaDecorator`]);
     value service = registry.getInstance(`DbService`);
     assertIs(service, `ServiceDbSchemaDecorator`);
     assertEquals(service.connection, "users://users");
