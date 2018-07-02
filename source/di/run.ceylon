@@ -69,6 +69,9 @@ class Registry {
 
     class MetaRegistry {
 
+        MutableMap<Class<>, [[Class<>*], [Interface<>*]]>
+        components = HashMap<Class<>, [[Class<>*], [Interface<>*]]> {};
+
         MutableMap<Class<>, Class<>>
         extendComponents = HashMap<Class<>, Class<>> {};
 
@@ -78,46 +81,59 @@ class Registry {
         shared new({Class<Anything>*} components = empty) {
 
             value described = components.collect(describeClass);
+
+            this.components.putAll(described);
+            
             this.extendComponents.putAll {
-                for ([clazz, extClazzez, __] in described)
+                for (clazz-> [extClazzez, __] in described)
                 for(extClazz in extClazzez)
                 extClazz -> clazz
             };
+            
             this.interfaceComponents.putAll {
-                for ([clazz, __, ifaces] in described)
+                for (clazz->[ __, ifaces] in described)
                 for (iface in ifaces)
                 iface -> clazz
             };
         }
 
+        shared [Interface<>*] getClassInterfaces<T>(Class<T> clazz)
+                => if(exists [_, ifaces] = components[clazz]) then ifaces else [];
+
+        shared [Class<>*] getClassHierarty<T>(Class<T> clazz)
+                => if(exists [classes,_] = components[clazz]) then classes else [];
+
+        shared [[Class<>*], [Interface<>*]] getClassInfo<T>(Class<T> clazz)
+                =>  components[clazz] else [empty, empty];
+
         shared [Class<>*] getAppropriateClassForType<T>(Type<T> t) {
             if (is Interface<T> t) {
-                log.debug(() => "MetaRegistry.getAppropriateTypeFor: <``t``> is a Interface");
+                log.debug(() => "MetaRegistry.getAppropriateClassForType: <``t``> is a Interface");
                 if(is Class<T> satisfiedClass = interfaceComponents.get(t)) {
-                    log.debug(() => "MetaRegistry.getAppropriateTypeFor: has registered type for interface <``t``>");
+                    log.debug(() => "MetaRegistry.getAppropriateClassForType: has registered class <``satisfiedClass``> for interface <``t``>");
                     return [satisfiedClass];
                 }
-                log.warn(() => "MetaRegistry.getAppropriateTypeFor: Haven't registered types for interface: <``t``>");
+                log.warn(() => "MetaRegistry.getAppropriateClassForType: Haven't registered types for interface: <``t``>");
                 return empty;
             }
             // class
             else if(is Class<T> t) {
-                log.debug(() => "MetaRegistry.getAppropriateTypeFor: <``t``> is a Class");
+                log.debug(() => "MetaRegistry.getAppropriateClassForType: <``t``> is a Class");
                 if(is Class<T> extendedClass = extendComponents.get(t)) {
-                    log.debug(() => "MetaRegistry.getAppropriateTypeFor: has registered type for class <``t``>");
+                    log.debug(() => "MetaRegistry.getAppropriateClassForType: has registered type for class <``t``>");
                     return [extendedClass];
                 }
-                log.warn(() => "MetaRegistry.getAppropriateTypeFor: Haven't registered types for class: <``t``>");
+                log.warn(() => "MetaRegistry.getAppropriateClassForType: Haven't registered types for class: <``t``>");
                 return empty;
             }
             // union
             else if(is UnionType<T> t) {
-                log.debug(() => "MetaRegistry.getAppropriateTypeFor: <``t``> is an UnionType");
+                log.debug(() => "MetaRegistry.getAppropriateClassForType: <``t``> is an UnionType");
                 return concatenate(t.caseTypes.narrow<Class<>>(), t.caseTypes.flatMap(getAppropriateClassForType));
             }
             // intersection
             else if(is IntersectionType<T> t) {
-                log.debug(() => "MetaRegistry.getAppropriateTypeFor: <``t``> is an IntersectionType");
+                log.debug(() => "MetaRegistry.getAppropriateClassForType: <``t``> is an IntersectionType");
 
                 value intersected = interfaceComponents
                     .filterKeys((iface) => iface in t.satisfiedTypes)
@@ -128,17 +144,18 @@ class Registry {
                     is Class<T> cl = intersected.key) {
                     return [cl];
                 }
-                log.warn(() => "MetaRegistry.getAppropriateTypeFor: Haven't registered types for interface intersection: <``t``>");
+                log.warn(() => "MetaRegistry.getAppropriateClassForType: Haven't registered types for interface intersection: <``t``>");
                 return empty;
             }
             // not found
-            log.warn(() => "MetaRegistry.getAppropriateTypeFor: Type is not interface nor class: <``t``>");
+            log.warn(() => "MetaRegistry.getAppropriateClassForType: Type is not interface nor class: <``t``>");
             return empty;
         }
 
         shared void registerMetaInfoForType<T>(Class<T> t) {
             log.info("MetaRegistry.describeAndRegisterType: register type <``t``>");
-            value [clazz, extClazzez, ifaces] = describeClass(t);
+            value clazz->[extClazzez, ifaces] = describeClass(t);
+            components.put(clazz, [extClazzez, ifaces]);
             extendComponents.putAll { for (extClazz in extClazzez) extClazz -> clazz };
             interfaceComponents.putAll { for (iface in ifaces) iface -> clazz };
         }
@@ -260,35 +277,31 @@ class Registry {
         if (components.defines(t)) {
             log.trace(() => "Registry.tryToCreateInstanceAndCacheIt: components has registered type <``t``>");
             if (exists instance = components.get(t)) {
-                log.debug(() => "Registry.tryToCreateInstanceAndCacheIt: instanceOrEx for type <``t``> already instantiated");
+                log.debug(() => "Registry.tryToCreateInstanceAndCacheIt: instance for type <``t``> already instantiated");
                 assert (is T instance);
                 return instance;
             }
-            log.trace(() => "Registry.tryToCreateInstanceAndCacheIt: components has not instanceOrEx for type <``t``>");
+            log.trace(() => "Registry.tryToCreateInstanceAndCacheIt: components has not instance for type <``t``>");
             value instance = tryToCreateInstance(t);
             if(is Exception instance){
                 return instance;
             }
             components.put(t, instance);
-            log.debug(() => "Registry.tryToCreateInstanceAndCacheIt: instanceOrEx created for type <``t``>");
+            log.debug(() => "Registry.tryToCreateInstanceAndCacheIt: instance created for type <``t``>");
             return instance;
         }
         log.debug(() => "Registry.tryToCreateInstanceAndCacheIt: haven't registered type <``t``>");
         return Exception("Registry haven't such type <``t``>");
     }
 
-    alias Components => Map<Class<Anything>, Anything>;
 
-//    T? tryToCreateInstanceAndCacheIt<T>(Class<T> t) {
-//        return instantiateClassWithEnchancer(t);
-//    }
-
-    T|Exception instantiateClassWithEnchancer<T>(Class<T> t) {
-        T|Exception instanceOrEx = tryToCreateInstanceAndCacheIt(t);
+    T|Exception wrapClassWithEnchancer<T>(Type<T> requestedType)(T instanceOrEx)  {
         if(is T instance = instanceOrEx) {
-            log.debug(() => "Registry.instantiateClassWithEnchancer: instance created for type <``t``>");
-            if(nonempty enchancers = enchancerComponents.getOrDefault(t, [])) {
-                log.debug(() => "Registry.instantiateClassWithEnchancer: has registered enchancers for type <``t``>");
+            value instanceType = type(instance);
+            log.debug(() => "Registry.wrapClassWithEnchancer: instance <``instance else "null"``> created for type <``instanceType``>");
+            value enchancers = enchancerComponents.getOrDefault(instanceType, enchancerComponents.getOrDefault(requestedType, empty));
+            if(nonempty enchancers) {
+                log.debug(() => "Registry.wrapClassWithEnchancer: has registered enchancers for type <``instanceType``>");
                 variable T wrapped = instance;
                 for (e in enchancers) {
                     value params = constructParameters(e);
@@ -300,11 +313,11 @@ class Registry {
                         instanceParam.map(bindParameterWithValue(wrapped))
                     };
                     assert(is T newWrapped = e.namedApply(fullParams));
-                    log.trace(() => "Registry.instantiateClassWithEnchancer: create wrapper <``e``> for type <``t``>");
+                    log.trace(() => "Registry.wrapClassWithEnchancer: create wrapper <``e``> for type <``instanceType``>");
                     wrapped = newWrapped;
                 }
 //                assert(is T wrapped);
-                log.debug(() => "Registry.instantiateClassWithEnchancer: instance of <``t``> successfully wrapped");
+                log.debug(() => "Registry.wrapClassWithEnchancer: instance of <``instanceType``> successfully wrapped");
                 return wrapped;
             }
             return instance;
@@ -312,6 +325,36 @@ class Registry {
             return instanceOrEx ;
         }
     }
+
+//    T|Exception instantiateClassWithEnchancer<T>(Class<T> t) {
+//        T|Exception instanceOrEx = tryToCreateInstanceAndCacheIt(t);
+//        if(is T instance = instanceOrEx) {
+//            log.debug(() => "Registry.instantiateClassWithEnchancer: instance created for type <``t``>");
+//            if(nonempty enchancers = enchancerComponents.getOrDefault(t, [])) {
+//                log.debug(() => "Registry.instantiateClassWithEnchancer: has registered enchancers for type <``t``>");
+//                variable T wrapped = instance;
+//                for (e in enchancers) {
+//                    value params = constructParameters(e);
+//                    value [instanceParam, otherParams] = splitByFilter(params, (Parameter p) => p.type.typeOf(instance));
+//                    value instantiatedOtherParams = instantiateParameters(e, otherParams);
+//
+//                    value fullParams = expand {
+//                        instantiatedOtherParams,
+//                        instanceParam.map(bindParameterWithValue(wrapped))
+//                    };
+//                    assert(is T newWrapped = e.namedApply(fullParams));
+//                    log.trace(() => "Registry.instantiateClassWithEnchancer: create wrapper <``e``> for type <``t``>");
+//                    wrapped = newWrapped;
+//                }
+////                assert(is T wrapped);
+//                log.debug(() => "Registry.instantiateClassWithEnchancer: instance of <``t``> successfully wrapped");
+//                return wrapped;
+//            }
+//            return instance;
+//        } else {
+//            return instanceOrEx ;
+//        }
+//    }
 
     [{Entity*}, {Entity*}] splitByFilter<Entity>(
             {Entity*} coll, Boolean pred(Entity p))
@@ -329,7 +372,9 @@ class Registry {
 
         value firstPotentiallyCreated =
                 appropriateClasses
-                    .map(instantiateClassWithEnchancer)
+//                    .map(instantiateClassWithEnchancer)
+                    .map(tryToCreateInstanceAndCacheIt)
+                    .map(wrapClassWithEnchancer<Anything>(t))
                     .find((element) => !(element is Exception));
 
         if(is T i = firstPotentiallyCreated) {
@@ -338,6 +383,10 @@ class Registry {
         log.warn(() => "Registry.tryFindAndGetApproproateInstance: can't get instanceOrEx: for type ``t``");
         return null;
     }
+
+//    [Class<>, [Class<>*]] enchancer() {
+//
+//    }
 
 //    - [[ClassOrInterface]]
 //    - [[ClassOrInterface]]
@@ -352,10 +401,10 @@ class Registry {
         throw Exception("Registry.getInstance: can't createInstance for class <``t``>");
     }
 
-    {<String->Anything>*}
+    [<String->Anything>*]
     instantiateParameters<T>(Class<T> t, {Parameter*} paramsTypes) {
         log.debug(() => "Registry.instantiateParameters: try to instantiate params: ``paramsTypes``");
-        return paramsTypes.map(instantiateParameter(t)).coalesced;
+        return paramsTypes.map(instantiateParameter(t)).coalesced.sequence();
     }
 
     <String->Anything>? instantiateParameter<T>(Class<T> t)(Parameter parameter) {
@@ -441,12 +490,12 @@ Type<>[] resolveOpenTypes(Class<> parentClass, List<OpenType> openTypes)
         => [for (openType in openTypes) resolveOpenType(parentClass, openType)];
 
 // TODO move to reflectionTools.ceylon file
-[Class<T>, [Class<Anything>*], [Interface<Anything>*]]
+Class<T> ->[[Class<Anything>*], [Interface<Anything>*]]
 describeClass<T>(Class<T> clazz) {
 
     value extendedClazzez = getClassHierarchyExceptBasicClasses(clazz);
     value interfaces =  getInterfaceHierarhyExeptBasicTypes(clazz);
-    return [clazz, extendedClazzez, interfaces];
+    return clazz -> [extendedClazzez, interfaces];
 }
 
 [Class<>+] basicTypes = [`String`, `Integer`, `Float`, `Boolean`, `Character`, `Basic`, `Object`, `Anything`];
@@ -483,12 +532,12 @@ getClassHierarchyExceptBasicClasses<T>(Class<T> clazz) {
     return [extendedClass, *getClassHierarchyExceptBasicClasses(extendedClass)];
 }
 
-// TODO move to reflectionTools.ceylon file
-[T, Class<T>, [Class<Anything>*], [Interface<Anything>*]]
-describeInstance<T>(T instance) {
-    assert(is Class<T> clazz = type(instance));
-    return [instance, *describeClass(clazz)];
-}
+//// TODO move to reflectionTools.ceylon file
+//[T, Class<T>, [Class<Anything>*], [Interface<Anything>*]]
+//describeInstance<T>(T instance) {
+//    assert(is Class<T> clazz = type(instance));
+//    return [instance, *describeClass(clazz)];
+//}
 
 
 Class<> -> Anything getClassInstancePair<T>(Class<T>|T classOrInstance) {
@@ -499,10 +548,10 @@ Class<> -> Anything getClassInstancePair<T>(Class<T>|T classOrInstance) {
     return clazz -> classOrInstance;
 }
 
-[Anything, Class<>, [Class<>*], [Interface<>*]]
-describeComponent<T>(Class<T>|T comp) => switch(comp)
-    case(is Class<T>) [null, *describeClass(comp)]
-    else  describeInstance(comp);
+//[Anything, Class<>, [Class<>*], [Interface<>*]]
+//describeComponent<T>(Class<T>|T comp) => switch(comp)
+//    case(is Class<T>) [null, *describeClass(comp)]
+//    else  describeInstance(comp);
 
 // ========================= DESCRIBE-FUNCTIONS TESTS ==========================
 
@@ -513,15 +562,15 @@ shared void describeClass_SouldReturnCorrectInfo_ForClassWithMultiInterfaces() {
 }
 
 
-test
-shared void describeInstance_SouldReturnCorrectInfo_ForClassWithMultiInterfaces() {
-    value postman = RuPostman();
-    value actual = describeInstance(postman);
-    assertEquals {
-        actual = actual;
-        expected = [postman, `RuPostman`, [], [`Postman`, `Operator`]];
-    };
-}
+//test
+//shared void describeInstance_SouldReturnCorrectInfo_ForClassWithMultiInterfaces() {
+//    value postman = RuPostman();
+//    value actual = describeInstance(postman);
+//    assertEquals {
+//        actual = actual;
+//        expected = [postman, `RuPostman`, [], [`Postman`, `Operator`]];
+//    };
+//}
 
 class One() { }
 class OneOne() extends One() { }
@@ -713,15 +762,15 @@ abstract class Fruit() of orange | apple { }
 object apple extends Fruit() {}
 object orange extends Fruit() {}
 
-test
-shared void describeInstance_SouldReturnCorrectInfo_ForCaseClass() {
-    value actual = describeInstance(orange);
-    assertEquals {
-        actual = actual;
-        // orange is class orange with signleton object
-        expected = [orange, type(orange), [`Fruit`], []];
-    };
-}
+//test
+//shared void describeInstance_SouldReturnCorrectInfo_ForCaseClass() {
+//    value actual = describeInstance(orange);
+//    assertEquals {
+//        actual = actual;
+//        // orange is class orange with signleton object
+//        expected = [orange, type(orange), [`Fruit`], []];
+//    };
+//}
 
 // ============================ UNION TYPE ================================
 
@@ -952,7 +1001,7 @@ class ServiceDbSchemaDecorator(Service service, String dbType) satisfies Service
     connection => "``dbType``://" + service.connection;
 }
 
-class ServiceBdCredetionalsDecorator(
+class ServiceDbCredetionalsDecorator(
         Service service,
         String user,
         String password)
@@ -962,11 +1011,12 @@ class ServiceBdCredetionalsDecorator(
 
 class FakeDecorator() { }
 
+ignore()
 tag("enchancer")
 test
 shared void registryShouldCreateInstanceWithGivenEnchancer() {
     value registry = Registry {`DbService`, "users"};
-    registry.registerEnchancer(`DbService`, [`ServiceDbSchemaDecorator`]);
+    registry.registerEnchancer(`Service`, [`ServiceDbSchemaDecorator`]);
     value service = registry.getInstance(`Service`);
     assertIs(service, `ServiceDbSchemaDecorator`);
     assertEquals(service.connection, "users://users");
@@ -980,21 +1030,24 @@ shared void registryShouldThrowExceptionWhenRegisterEnchancerWithWrongInterface(
     assertThatException(() => registry.registerEnchancer(`Service`, [`FakeDecorator`]));
 }
 
-ignore()
+//ignore()
 tag("enchancer")
 test
 shared void registryShouldCreateInstanceWithTwoGivenEnchancers() {
     value registry = Registry {
         components = {DbService("users")};
         parameters = {
-            [`ServiceBdCredetionalsDecorator`, "user", "qdzo"],
-            [`ServiceBdCredetionalsDecorator`, "password", "secret"],
+            [`ServiceDbCredetionalsDecorator`, "user", "qdzo"],
+            [`ServiceDbCredetionalsDecorator`, "password", "secret"],
             [`ServiceDbSchemaDecorator`, "dbType", "inmemory"]
         };
     };
-    registry.registerEnchancer(`Service`, [`ServiceBdCredetionalsDecorator`,`ServiceDbSchemaDecorator`]);
+    registry.registerEnchancer(`Service`, [
+        `ServiceDbCredetionalsDecorator`,
+        `ServiceDbSchemaDecorator`
+    ]);
     value service = registry.getInstance(`DbService`);
     assertIs(service, `ServiceDbSchemaDecorator`);
-    assertEquals(service.connection, "qdzo:secret@inmemory://users");
+    assertEquals(service.connection, "inmemory://qdzo:secret@users");
 }
 
