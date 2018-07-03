@@ -253,6 +253,28 @@ class Registry {
                 "type <``clazz``>");
     }
 
+    [Class<T>, T|Exception] tryToCreateInstanceIfNotExists<T>([Class<T>, T?] instantiated) {
+        value [clazz, instance] = instantiated;
+        if(exists instance) {
+            return [clazz, instance];
+        }
+        try {
+            log.debug(() => "Registry.tryToCreateInstance: class <``clazz``>");
+            value paramsWithTypes = constructParameters(clazz);
+            log.trace(() => "Registry.tryToCreateInstance: default constructor for "+
+            "type <``clazz``> has ``paramsWithTypes.size`` parameters");
+            value params = instantiateParameters(clazz, paramsWithTypes);
+            log.trace(() => "Registry.tryToCreateInstance: try to instantiate type <``clazz``> with params: <``params``>");
+            value newInstance = clazz.namedApply(params);
+            log.debug(() => "Registry.tryToCreateInstance: instance created for type <``clazz``>");
+            return [clazz, newInstance];
+        } catch(Exception th) {
+            value errorMsg = "Can't create instanceOrEx: ``th.message``";
+            log.error(() => "Registry.tryToCreateInstance: ``errorMsg``");
+            return [clazz, Exception(errorMsg)];
+        }
+    }
+
     T|Exception tryToCreateInstance<T>(Class<T> clazz) {
         try {
             log.debug(() => "Registry.tryToCreateInstance: class <``clazz``>");
@@ -294,6 +316,11 @@ class Registry {
         return Exception("Registry haven't such type <``t``>");
     }
 
+
+    T|Exception returnInstanceOrException<T>(Type<T> requestedType)([Class<T>, T|Exception] instantiated)  {
+        value [clazz, instance] = instantiated;
+        return instance;
+    }
 
     T|Exception wrapClassWithEnchancer<T>(Type<T> requestedType)(T instanceOrEx)  {
         if(is T instance = instanceOrEx) {
@@ -370,11 +397,21 @@ class Registry {
             metaRegistry.getAppropriateClassForType(t)
         };
 
+        /*
+           find appropriate
+           take from db if exists
+           if null try-create
+           if non exists in db yet -> save it
+        */
         value firstPotentiallyCreated =
                 appropriateClasses
 //                    .map(instantiateClassWithEnchancer)
-                    .map(tryToCreateInstanceAndCacheIt)
-                    .map(wrapClassWithEnchancer<Anything>(t))
+//                    .map(tryToCreateInstanceAndCacheIt)
+                    .map(getFromCache)
+                    .map(tryToCreateInstanceIfNotExists)
+                    .map(saveToCache)
+                    .map(returnInstanceOrException<Anything>(t))
+//                    .map(wrapClassWithEnchancer<Anything>(t))
                     .find((element) => !(element is Exception));
 
         if(is T i = firstPotentiallyCreated) {
@@ -382,6 +419,36 @@ class Registry {
         }
         log.warn(() => "Registry.tryFindAndGetApproproateInstance: can't get instanceOrEx: for type ``t``");
         return null;
+    }
+
+    T cast<T>(Anything val){
+        assert(is T val);
+        return val;
+    }
+
+    [Class<T>, T?] getFromCache<T>(Class<T> clazz) {
+        log.debug(() => "Registry.getFromCache: called with class <``clazz``>");
+        if (exists instance = components[clazz]) {
+            log.debug(() => "Registry.getFromCache: <``clazz``> has cached value");
+            return [clazz, cast<T>(instance)];
+        }
+        else {
+            log.debug(() => "Registry.getFromCache: <``clazz``> hasn't cached value");
+            return [clazz, null];
+        }
+    }
+
+
+
+    [Class<T>, T|Exception] saveToCache<T>([Class<T>, T|Exception] instantiated) {
+        log.debug(() => "Registry.saveToCache: called with params <``instantiated``>");
+        value [clazz, instance] = instantiated;
+        if(!is Exception instance,
+           !components[clazz] exists) {
+            log.debug(() => "Registry.saveToCache: there are no cached value for <``instantiated``>. cache it!");
+            components.put(clazz, instance);
+        }
+        return instantiated;
     }
 
 //    [Class<>, [Class<>*]] enchancer() {
@@ -524,11 +591,11 @@ getClassHierarchyExceptBasicClasses<T>(Class<T> clazz) {
     // Only for Anything class extended-class = null;
     assert(exists extendedClassOpenType = clazz.declaration.extendedType);
     assert(is Class<> extendedClass = resolveOpenType(clazz, extendedClassOpenType));
-    log.trace(() => "describeClassHierarchyExceptBasicClass:  ``extendedClass``");
     if(isBasicType(extendedClass)) {
         log.trace(() => "describeClassHierarchyExceptBasicClass: reached Basic class (or some lower)");
         return empty;
     }
+    log.trace(() => "describeClassHierarchyExceptBasicClass:  ``extendedClass``");
     return [extendedClass, *getClassHierarchyExceptBasicClasses(extendedClass)];
 }
 
@@ -558,7 +625,7 @@ Class<> -> Anything getClassInstancePair<T>(Class<T>|T classOrInstance) {
 test
 shared void describeClass_SouldReturnCorrectInfo_ForClassWithMultiInterfaces() {
     value actual = describeClass(`RuPostman`);
-    assertEquals(actual, [`RuPostman`, [], [`Postman`, `Operator`]]);
+    assertEquals(actual, `RuPostman`->[[], [`Postman`, `Operator`]]);
 }
 
 
@@ -726,6 +793,7 @@ shared void registryShouldThrowExceptinWhenThereAreNoSomeParameters() {
     assertThatException(() => registry.getInstance(`Person`));
 }
 
+tag("default")
 test
 shared void registryShouldCreateInstanceWithDefaultParameter() {
     value registry = Registry {`Box2`};
@@ -954,6 +1022,7 @@ shared void registryShouldCreateInstanceForGivenInterface() {
 }
 
 tag("if")
+//tag("default")
 test
 shared void registryShouldCreateInstanceForGivenInterfaceWithItsDefaultParameter() {
     value registry = Registry {`AsiaPostal`};
