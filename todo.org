@@ -1,0 +1,9 @@
+* DONE check for enchancer
+  CLOSED: [2018-07-04 Wed 00:36]
+* TODO immutable register api
+* TODO extract interface Registry
+* TODO Organize modules 
+* TODO version -> 0.0.1
+* TODO more functional staff
+* TODO write README
+* TODO Write doc
