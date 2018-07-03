@@ -258,6 +258,9 @@ class Registry {
         if(exists instance) {
             return [clazz, instance];
         }
+        if(clazz in basicTypes) {
+            return [clazz, Exception("Registry do not create basic types: they should be specified as parameters or created instances basicTypes")];
+        }
         try {
             log.debug(() => "Registry.tryToCreateInstance: class <``clazz``>");
             value paramsWithTypes = constructParameters(clazz);
