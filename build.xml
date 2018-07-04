@@ -268,7 +268,7 @@
     </target>
 
 
-    <target name="clean"
+    <target name="clean" depends="-init"
             description="Cleans project from artifacts and dependencies dir">
         <echo>Deleting compiled modules</echo>
         <delete dir="${out.repo}"/>
