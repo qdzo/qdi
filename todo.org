@@ -1,5 +1,6 @@
 * DONE check for enchancer
   CLOSED: [2018-07-04 Wed 00:36]
+* TODO rename components to cache. and use components from metaregistry as components registry
 * TODO immutable register api
 * TODO extract interface Registry
 * TODO Organize modules 
@@ -7,3 +8,10 @@
 * TODO more functional staff
 * TODO write README
 * TODO Write doc
+
+* CHANGES
+** Remove support for Classes in registerEnhancer
+   - If someone requests Class, and i have enhancer for it, i will fail, cos my enhacner should extend class
+     and this requires additional modifications of target class (default annotations).
+   - If someone requests intersectionType and target is appropriate, but enhancer implement partial interfaces
+   - It's not convenient to wrap only needed class (interface is more useful in this situation)

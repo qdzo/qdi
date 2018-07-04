@@ -164,9 +164,14 @@ class Registry {
         shared void inspect() {
             print("---------------- META-REGISTRY INSPECTION -----------------");
             printAll({
+                "components size: ``components.size``",
                 "interfaceComponents size: ``interfaceComponents.size``",
                 "extendComponents size: ``extendComponents.size``"
             }, "\n");
+            if (!components.empty) {
+                print("------------------ componenets ------------------");
+                printAll(components, "\n");
+            }
             if (!interfaceComponents.empty) {
                 print("------------------ interfacesComponenets ------------------");
                 printAll(interfaceComponents, "\n");
@@ -888,6 +893,12 @@ shared void registryShouldCreateDeeplyNestedInstances() {
     assertIs(registry.getInstance(`Matryoshka1`), `Matryoshka1`);
 }
 
+test
+shared void registryShouldCreateDeeplyNestedInstancesWithDirectRefenecesAndWithoutExplicitRegistration() {
+    value registry = Registry { `Matryoshka1` };
+    assertIs(registry.getInstance(`Matryoshka1`), `Matryoshka1`);
+}
+
 // ============================ CASE CLASS ================================
 
 abstract class Fruit() of orange | apple { }
@@ -982,7 +993,7 @@ shared void registryShouldCreateInstanceWithTwoGenericTypeDependencyAndExtendedC
     assertIs(actual, `GenericTanker<String, Integer>`);
 }
 
-tag("repl")
+tag("generic")
 test
 shared void registryShouldCreateInstanceWithTwoGenericTypeDependencyAndExtendedClasses2() {
     value registry = Registry {
@@ -1032,26 +1043,27 @@ class BikeSeller<BikeType>(BikeType bike)  {
 }
 
 //tag("repl")
-//test
-//shared void registryShouldCreateInstanceWithInvariantDependency() {
-//    value registry = Registry {
-//        `Bicycler<CrossBike>`,
-//        `CrossBike`
-//    };
-//    value actual = registry.getInstance(`Bicycler<CrossBike>`);
-//    assertIs(actual, `Bicycler<CrossBike>`);
-//}
+test
+shared void registryShouldCreateInstanceWithInvariantDependency() {
+    value registry = Registry {
+        `Bicycler<CrossBike>`,
+        `CrossBike`
+    };
+    value actual = registry.getInstance(`Bicycler<CrossBike>`);
+    assertIs(actual, `Bicycler<CrossBike>`);
+}
 
-//tag("repl")
-//test
-//shared void registryShouldCreateInstanceWithContrvariantDependency() {
-//    value registry = Registry {
-//        `Bicycler<CrossBike>`,
-//        `Bike`
-//    };
-//    value actual = registry.getInstance(`Bicycler<CrossBike>`);
-//    assertIs(actual, `Bicycler<CrossBike>`);
-//}
+tag("repl")
+test
+shared void registryShouldCreateInstanceWithoutRegistrationIfWeHaveDirectReferenceToClass() {
+    value registry = Registry {
+        `Bicycler<CrossBike>`// It's wonderfull - that we can create instances without registering it (if we have direct reference in constructor to classes and if they have default parameters)
+    };
+    registry.inspect();
+    value actual = registry.getInstance(`Bicycler<CrossBike>`);
+    assertIs(actual, `Bicycler<CrossBike>`);
+    registry.inspect();
+}
 
 tag("generic")
 test
