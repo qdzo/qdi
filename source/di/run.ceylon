@@ -189,8 +189,8 @@ class Registry {
     MutableMap<Class<>, Anything> components
             = HashMap<Class<>, Anything> {};
 
-    MutableMap<Class<>|Interface<>, [Class<>+]> enhancerComponents
-            = HashMap<Class<>|Interface<>, [Class<>+]> {};
+    MutableMap<Interface<>, [Class<>+]> enhancerComponents
+            = HashMap<Interface<>, [Class<>+]> {};
 
 
     shared void checkEnhancerInterfaceCompatibility<Target, Wrapper>(
@@ -267,7 +267,7 @@ class Registry {
 
 
     // TODO: Implement registerEnchancer (Vitaly 29.06.2018)
-    shared void registerEnchancer<T>(Class<T>|Interface<T> wrapped, [Class<>+] wrappers) {
+    shared void registerEnchancer<T>(Interface<T> wrapped, [Class<>+] wrappers) {
         log.info("Registry.registerEnchancer: try register enhancers ``wrappers`` for type <``wrapped``>");
         checkEnchancers(wrapped, wrappers);
         enhancerComponents.put(wrapped, wrappers);
@@ -384,7 +384,7 @@ class Registry {
         value [clazz, instanceOrException] = instantiated;
         if(is T instance = instanceOrException) {
             log.debug(() => "Registry.wrapClassWithEnchancer: instance <``instance else "null"``> created for type <``clazz``>");
-            value enhancers = enhancerComponents.getOrDefault(clazz, enhancerComponents.getOrDefault(requestedType, empty));
+            value enhancers = enhancerComponents.getOrDefault(requestedType, empty);
             if(nonempty enhancers) {
                 log.debug(() => "Registry.wrapClassWithEnchancer: has registered enhancers for type <``clazz``>: ``enhancers``");
                 variable T wrapped = instance;
@@ -1167,7 +1167,7 @@ tag("now")
 tag("enhancer")
 test
 shared void registryShouldThrowExceptionWhenRegisterEnchancerWithWrongInterface2() {
-    value registry = Registry {`Service`, "users"};
+    value registry = Registry {`DbService`, "users"};
     assertThatException(() => registry.registerEnchancer(`Service`, [`FakeDecorator2`]))
     .hasMessage("Enhancer class <di::FakeDecorator2> must have at least one constructor parameter with <di::Service> or some of it interfaces []");
 }
