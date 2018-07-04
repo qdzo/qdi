@@ -320,7 +320,6 @@ class Registry {
             [type, paramName] -> val
         };
 
-//        if(nonempty errors = enhancers.map(([target, wrappers])=> checkEnchancers(target, wrappers)).coalesced.sequence()){
         if(nonempty errors = [*enhancers.map(unflatten(checkEnchancers<Anything>)).coalesced]){
             throw errors.first;
         }
@@ -356,6 +355,10 @@ class Registry {
             value errorMsg = "Registry do not create basic types: they should be specified as parameters or created instances basicTypes";
             return [clazz, Exception(errorMsg)];
         }
+//        if(clazz.declaration.abstract) {
+//            value errorMsg = "Registry do not create ";
+//            return [clazz, Exception(errorMsg)];
+//        }
         return [clazz, tryToCreateInstance(clazz)];
     }
 
@@ -376,29 +379,6 @@ class Registry {
             return Exception(errorMsg);
         }
     }
-
-//    Target|Exception tryToCreateInstanceAndCacheIt<Target>(Class<Target> t) {
-//        log.debug(() => "Registry.tryToCreateInstanceAndCacheIt: started for type <``t``>");
-//        // registered class
-//        if (componentsCache.defines(t)) {
-//            log.trace(() => "Registry.tryToCreateInstanceAndCacheIt: componentsCache has registered type <``t``>");
-//            if (exists instance = componentsCache.get(t)) {
-//                log.debug(() => "Registry.tryToCreateInstanceAndCacheIt: instance for type <``t``> already instantiated");
-//                assert (is Target instance);
-//                return instance;
-//            }
-//            log.trace(() => "Registry.tryToCreateInstanceAndCacheIt: componentsCache has not instance for type <``t``>");
-//            value instance = tryToCreateInstance(t);
-//            if(is Exception instance){
-//                return instance;
-//            }
-//            componentsCache.put(t, instance);
-//            log.debug(() => "Registry.tryToCreateInstanceAndCacheIt: instance created for type <``t``>");
-//            return instance;
-//        }
-//        log.debug(() => "Registry.tryToCreateInstanceAndCacheIt: haven't registered type <``t``>");
-//        return Exception("Registry haven't such type <``t``>");
-//    }
 
 
     T|Exception returnInstanceOrException<T>(Type<T> requestedType)([Class<T>, T|Exception] instantiated)  {
@@ -437,36 +417,6 @@ class Registry {
         return instantiated;
     }
 
-//    Target|Exception instantiateClassWithEnchancer<Target>(Class<Target> t) {
-//        Target|Exception instantiated = tryToCreateInstanceAndCacheIt(t);
-//        if(is Target instance = instantiated) {
-//            log.debug(() => "Registry.instantiateClassWithEnchancer: instance created for type <``t``>");
-//            if(nonempty enhancers = enhancerComponents.getOrDefault(t, [])) {
-//                log.debug(() => "Registry.instantiateClassWithEnchancer: has registered enhancers for type <``t``>");
-//                variable Target wrapped = instance;
-//                for (e in enhancers) {
-//                    value params = constructParameters(e);
-//                    value [instanceParam, otherParams] = splitByFilter(params, (Parameter p) => p.type.typeOf(instance));
-//                    value instantiatedOtherParams = instantiateParameters(e, otherParams);
-//
-//                    value fullParams = expand {
-//                        instantiatedOtherParams,
-//                        instanceParam.map(bindParameterWithValue(wrapped))
-//                    };
-//                    assert(is Target newWrapped = e.namedApply(fullParams));
-//                    log.trace(() => "Registry.instantiateClassWithEnchancer: create wrapper <``e``> for type <``t``>");
-//                    wrapped = newWrapped;
-//                }
-////                assert(is Target wrapped);
-//                log.debug(() => "Registry.instantiateClassWithEnchancer: instance of <``t``> successfully wrapped");
-//                return wrapped;
-//            }
-//            return instance;
-//        } else {
-//            return instantiated ;
-//        }
-//    }
-
     [{Entity*}, {Entity*}] splitByFilter<Entity>(
             {Entity*} coll, Boolean pred(Entity p))
             => [ coll.filter(pred), coll.filter(not(pred)) ];
@@ -477,26 +427,18 @@ class Registry {
     T? tryFindAndGetApproproateInstance<T>(Type<T> t) {
         log.debug(() => "Registry.tryFindAndGetApproproateInstance: for type <``t``> ");
         value appropriateClasses = expand {
-            [if(is Class<T> t) t],
+            [if(is Class<T> t, !t.declaration.abstract) t],
             metaRegistry.getAppropriateClassForType(t)
         };
 
-        /*
-           find appropriate
-           take from db if exists
-           if null try-create
-           if non exists in db yet -> save it
-        */
         value firstPotentiallyCreated =
                 appropriateClasses
-//                    .map(instantiateClassWithEnchancer)
-//                    .map(tryToCreateInstanceAndCacheIt)
                     .map(getFromCache)
                     .map(tryToCreateInstanceIfNotExists)
                     .map(saveToCache)
                     .map(wrapClassWithEnchancer<Anything>(t))
                     .map(returnInstanceOrException<Anything>(t))
-                    .find((element) => !(element is Exception));
+                    .find(notException);
 
         if(is T i = firstPotentiallyCreated) {
             return i;
@@ -504,6 +446,9 @@ class Registry {
         log.warn(() => "Registry.tryFindAndGetApproproateInstance: can't get instantiated: for type ``t``");
         return null;
     }
+
+    Boolean  notException(Anything instanceOrException)
+            => !instanceOrException is Exception;
 
     T cast<T>(Anything val){
         assert(is T val);
@@ -534,10 +479,6 @@ class Registry {
         }
         return instantiated;
     }
-
-//    [Class<>, [Class<>*]] enhancer() {
-//
-//    }
 
 //    - [[ClassOrInterface]]
 //    - [[ClassOrInterface]]
@@ -692,13 +633,6 @@ getClassHierarchyExceptBasicClasses<T>(Class<T> clazz) {
     return [extendedClass, *getClassHierarchyExceptBasicClasses(extendedClass)];
 }
 
-//// TODO move to reflectionTools.ceylon file
-//[Target, Class<Target>, [Class<Anything>*], [Interface<Anything>*]]
-//describeInstance<Target>(Target instance) {
-//    assert(is Class<Target> clazz = type(instance));
-//    return [instance, *describeClass(clazz)];
-//}
-
 
 Class<> -> Anything getClassInstancePair<T>(Class<T>|T classOrInstance) {
     if(is Class<T> classOrInstance) {
@@ -708,11 +642,6 @@ Class<> -> Anything getClassInstancePair<T>(Class<T>|T classOrInstance) {
     return clazz -> classOrInstance;
 }
 
-//[Anything, Class<>, [Class<>*], [Interface<>*]]
-//describeComponent<Target>(Class<Target>|Target comp) => switch(comp)
-//    case(is Class<Target>) [null, *describeClass(comp)]
-//    else  describeInstance(comp);
-
 // ========================= DESCRIBE-FUNCTIONS TESTS ==========================
 
 test
@@ -720,17 +649,6 @@ shared void describeClass_SouldReturnCorrectInfo_ForClassWithMultiInterfaces() {
     value actual = describeClass(`RuPostman`);
     assertEquals(actual, `RuPostman`->[[], [`Postman`, `Operator`]]);
 }
-
-
-//test
-//shared void describeInstance_SouldReturnCorrectInfo_ForClassWithMultiInterfaces() {
-//    value postman = RuPostman();
-//    value actual = describeInstance(postman);
-//    assertEquals {
-//        actual = actual;
-//        expected = [postman, `RuPostman`, [], [`Postman`, `Operator`]];
-//    };
-//}
 
 class One() { }
 class OneOne() extends One() { }
@@ -749,30 +667,11 @@ interface AB satisfies A & B {}
 interface ABC satisfies AB & C {}
 class Clazz() satisfies ABC { }
 
-tag("d")
 test
 shared void describeClassInterfaces_SouldReturnCorrectInfo_ForClassWithSeveralNestedInterfaces() {
-//    value actual = describeClassInterfaces(`Clazz`);
     value actual = getInterfaceHierarhy(`Clazz`);
     assertEquals(actual, [`ABC`, `AB`, `C`, `A`, `B`]);
 }
-//
-//
-//shared void run() {
-//    value registry = Registry();
-//    registry.register(`Atom`);
-////    registry.registerParameter("name", "Vika");
-////    registry.registerParameter("age", 18);
-//    registry.register(`Atom`);
-//    Atom atom = registry.getInstance(`Atom`);
-//    print(atom);
-//    Atom atom2 = registry.getInstance(`Atom`);
-//    print(atom2);
-////    value params = constructParameters(`Person`);
-////    value params = constructParameters(`Person`);
-////    print(params);
-////    print(`Person`.defaultConstructor?.namedApply({"name"-> "Vitaly", "age"-> 31}));
-//}
 
 // ------------------ MAIN TESTS ------------------------
 
@@ -930,15 +829,19 @@ abstract class Fruit() of orange | apple { }
 object apple extends Fruit() {}
 object orange extends Fruit() {}
 
-//test
-//shared void describeInstance_SouldReturnCorrectInfo_ForCaseClass() {
-//    value actual = describeInstance(orange);
-//    assertEquals {
-//        actual = actual;
-//        // orange is class orange with signleton object
-//        expected = [orange, type(orange), [`Fruit`], []];
-//    };
-//}
+test
+shared void registryShouldReturnInstanceForCaseClasses() {
+    value registry = Registry { apple };
+    value actual = registry.getInstance(`Fruit`);
+    assertEquals(actual, apple);
+}
+
+test
+shared void registryShouldReturnInstanceForCaseClasses1() {
+    value registry = Registry { `Fruit` };
+    value actual = registry.getInstance(`Fruit`);
+    assertEquals(actual, apple);
+}
 
 // ============================ UNION TYPE ================================
 
