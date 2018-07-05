@@ -286,41 +286,6 @@
     </target>
 
 
-    <target name="fat-jar" depends="compile" description="Generates fat-jar">
-        <echo>Generating fat-jar for module: ${run.module.name}</echo>
-        <condition property="assemble" value="${out}" else="${run.module.name}-${run.module.version}.jar">
-            <isset property="out"/>
-        </condition>
-        <exec executable="ceylon" failonerror="true">
-            <arg value="fat-jar"/>
-            <arg value="--rep"/>
-            <arg value="./modules"/>
-            <arg value="--force"/>
-            <arg value="--out"/>
-            <arg value="${assemble}"/>
-            <arg value="${run.module.name}/${run.module.version}"/>
-        </exec>
-        <property name="assemble-path" location="${assemble}"/>
-        <echo>Complete: ${assemble-path}</echo>
-    </target>
-
-
-    <target name="assemble" depends="compile" description="Generates ceylon assemble file (.cas)">
-        <echo>Generating ceylon assemble for module: ${run.module.name}</echo>
-        <condition property="assemble" value="${out}" else="${run.module.name}-${run.module.version}.cas">
-            <isset property="out"/>
-        </condition>
-        <exec executable="ceylon" failonerror="true">
-            <arg value="fat-jar"/>
-            <arg value="./modules"/>
-            <arg value="--out"/>
-            <arg value="${assemble}"/>
-            <arg value="${run.module.name}/${run.module.version}"/>
-        </exec>
-        <property name="assemble-path" location="${assemble}"/>
-        <echo>Complete: ${assemble-path}</echo>
-    </target>
-
 
     <target name="all-quick" description="Runs full cycle(without clean)">
         <antcall target="fetch"/>

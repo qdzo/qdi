@@ -1,3 +1,6 @@
 .idea/*
 modules
 *~
+/.exploded/
+/classes/
+/.settings/

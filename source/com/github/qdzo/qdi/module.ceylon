@@ -1,7 +1,5 @@
-"Default documentation for module `di`."
-
-native ("jvm")
-module di "1.0.0" {
+native("jvm", "js")
+module com.github.qdzo.qdi "0.0.1" {
     import ceylon.collection "1.3.3";
     import ceylon.test "1.3.3";
     import ceylon.logging "1.3.3";

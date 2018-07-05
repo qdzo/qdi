@@ -1,10 +1,12 @@
 
 [compiler]
-source=source
 resource=resource
+source=source
+source=test
 
 [defaults]
 offline=false
 flatclasspath=false
 autoexportmavendependencies=false
 fullyexportmavendependencies=false
+encoding=UTF-8
