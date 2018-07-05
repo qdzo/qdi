@@ -1,7 +1,3 @@
-import ceylon.collection {
-    MutableMap,
-    HashMap
-}
 import ceylon.language.meta.model {
     Type,
     IntersectionType,
@@ -11,16 +7,6 @@ import ceylon.language.meta.model {
 }
 
 shared class MetaRegistry {
-
-//    MutableMap<Class<>, [[Class<>*], [Interface<>*]]>
-//    components = HashMap<Class<>, [[Class<>*], [Interface<>*]]> {};
-//
-//    MutableMap<Class<>, Class<>>
-//    extendComponents = HashMap<Class<>, Class<>> {};
-//
-//    MutableMap<Interface<>, Class<>>
-//    interfaceComponents = HashMap<Interface<>, Class<>> {};
-
 
     Map<Class<>, [[Class<>*], [Interface<>*]]> components;
 
@@ -118,9 +104,6 @@ shared class MetaRegistry {
     shared MetaRegistry registerMetaInfoForType<T>(Class<T> t) {
         log.info("MetaRegistry.describeAndRegisterType: register type <``t``>");
         value clazz->[extClazzez, ifaces] = describeClass(t);
-//        components.put(clazz, [extClazzez, ifaces]);
-//        extendComponents.putAll { for (extClazz in extClazzez) extClazz -> clazz };
-//        interfaceComponents.putAll { for (iface in ifaces) iface -> clazz };
         return withState {
             components = components.patch(map {clazz -> [extClazzez, ifaces]});
             extendComponents = extendComponents.patch(map {

@@ -179,7 +179,6 @@ shared class RegistryImpl satisfies Registry  {
 
     shared actual Registry registerParameter<T>(Class<T> t, String param, Anything val) {
         log.info("Registry.registerParameter: for type <``t``>, name: <``param``>, val: <``val else "null"``>");
-//        parameters.put([t, param], val);
         return withState {
             metaRegistry = metaRegistry;
             parameters = parameters.patch(map{[t, param]-> val});
@@ -190,9 +189,6 @@ shared class RegistryImpl satisfies Registry  {
 
     shared actual Registry register<T>(Class<T>|Object typeOrInstance) {
         value clazz->inst = getClassInstancePair(typeOrInstance);
-//        componentsCache.put(clazz, inst);
-        
-//        metaRegistry.registerMetaInfoForType(clazz)
         log.info("Registry.register: register " +
                     (if(exists inst) then "instantiated: <``inst``> for " else "") +
                 "type <``clazz``>");
@@ -328,7 +324,6 @@ shared class RegistryImpl satisfies Registry  {
            !componentsCache[clazz] exists) {
             log.debug(() => "Registry.saveToCache: there are no cached value for <``instantiated``>. cache it!");
             componentsCache = componentsCache.patch(map {clazz -> instance});
-//            componentsCache.put(clazz, instance);
         }
         return instantiated;
     }
@@ -378,7 +373,6 @@ shared class RegistryImpl satisfies Registry  {
         if(is Exception error = checkEnchancers(target, wrappers)) {
             throw error;
         }
-//        enhancerComponents.put(target, wrappers);
         log.info("Registry.registerEnchancer: register enhancers ``wrappers`` successfully");
         return withState {
             metaRegistry = metaRegistry;
