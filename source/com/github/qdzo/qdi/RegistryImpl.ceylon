@@ -1,7 +1,3 @@
-import ceylon.collection {
-    MutableMap,
-    HashMap
-}
 import ceylon.language.meta.model {
     Type,
     Class,
@@ -30,30 +26,22 @@ Logger log = logger(`module`);
 
 shared class RegistryImpl satisfies Registry  {
 
-//    class RegistryState(
-//            shared Map<[Type<>, String],Anything> parameters = emptyMap,
-//            shared Map<Type<>, Anything> componentsCache = emptyMap,
-//            shared Map<Interface<>, Class<>> interfaceComponents = emptyMap)  {
-//
-//        shared RegistryState with(
-//                Map<[Type<>, String], Anything> parameters = this.parameters,
-//                Map<Type<>, Anything> componentsCache = this.componentsCache,
-//                Map<Interface<>, Class<>> interfaceComponents = this.interfaceComponents
-//                )  => RegistryState(parameters, componentsCache, interfaceComponents);
-//
-//    }
-
-
     late MetaRegistry metaRegistry;
 
-    MutableMap<[Class<>, String], Anything> parameters
-            = HashMap<[Class<>, String], Anything> {};
+    late Map<[Class<>, String], Anything> parameters;
 
-    MutableMap<Class<>, Anything> componentsCache
-            = HashMap<Class<>, Anything> {};
+    late Map<Interface<>, [Class<>+]> enhancerComponents;
 
-    MutableMap<Interface<>, [Class<>+]> enhancerComponents
-            = HashMap<Interface<>, [Class<>+]> {};
+    late variable Map<Class<>, Anything> componentsCache;
+
+//    MutableMap<[Class<>, String], Anything> parameters
+//            = HashMap<[Class<>, String], Anything> {};
+//
+//    MutableMap<Class<>, Anything> componentsCache
+//            = HashMap<Class<>, Anything> {};
+//
+//    MutableMap<Interface<>, [Class<>+]> enhancerComponents
+//            = HashMap<Interface<>, [Class<>+]> {};
 
 
     Exception? checkEnhancerInterfaceCompatibility<Target, Wrapper>(
@@ -159,9 +147,9 @@ shared class RegistryImpl satisfies Registry  {
             {[Interface<>, [Class<>+]]*} enhancers = empty) {
 
         value classInstencePairs = components.collect(getClassInstancePair);
-        this.componentsCache.putAll(classInstencePairs);
+        this.componentsCache = map(classInstencePairs);
         this.metaRegistry = MetaRegistry(classInstencePairs*.key);
-        this.parameters.putAll {
+        this.parameters = map {
             for ([type, paramName, val] in parameters)
             [type, paramName] -> val
         };
@@ -169,29 +157,52 @@ shared class RegistryImpl satisfies Registry  {
         if(nonempty errors = [*enhancers.map(unflatten(checkEnchancers<Anything>)).coalesced]){
             throw errors.first;
         }
-        this.enhancerComponents.putAll {
+        this.enhancerComponents = map {
             for([iface, wrappers] in enhancers)
             if(is Null checkError = checkEnchancers(iface, wrappers))
             iface -> wrappers
         };
     }
 
+    new withState(
+            MetaRegistry metaRegistry,
+            Map<[Class<>, String], Anything> parameters,
+            Map<Interface<>, [Class<>+]> enhancerComponents,
+            Map<Class<>, Anything> componentsCache
+            ) {
+        this.metaRegistry = metaRegistry;
+        this.parameters = parameters;
+        this.enhancerComponents = enhancerComponents;
+        this.componentsCache = componentsCache;
+    }
+
 
     shared actual Registry registerParameter<T>(Class<T> t, String param, Anything val) {
         log.info("Registry.registerParameter: for type <``t``>, name: <``param``>, val: <``val else "null"``>");
-        parameters.put([t, param], val);
-        return this;
+//        parameters.put([t, param], val);
+        return withState {
+            metaRegistry = metaRegistry;
+            parameters = parameters.patch(map{[t, param]-> val});
+            enhancerComponents = enhancerComponents;
+            componentsCache = componentsCache;
+        };
     }
 
     shared actual Registry register<T>(Class<T>|Object typeOrInstance) {
         value clazz->inst = getClassInstancePair(typeOrInstance);
-        componentsCache.put(clazz, inst);
+//        componentsCache.put(clazz, inst);
+        // TODO: make immutable (Vitaly 05.07.2018)
         metaRegistry.registerMetaInfoForType(clazz);
 
         log.info("Registry.register: register " +
                     (if(exists inst) then "instantiated: <``inst``> for " else "") +
                 "type <``clazz``>");
-        return this;
+        return withState {
+            metaRegistry = metaRegistry;
+            parameters = parameters;
+            enhancerComponents = enhancerComponents;
+            componentsCache = componentsCache.patch(map{clazz -> inst});
+        };
     }
 
     [Class<T>, T|Exception] tryToCreateInstanceIfNotExists<T>([Class<T>, T?] instantiated) {
@@ -317,7 +328,8 @@ shared class RegistryImpl satisfies Registry  {
         if(!is Exception instance,
            !componentsCache[clazz] exists) {
             log.debug(() => "Registry.saveToCache: there are no cached value for <``instantiated``>. cache it!");
-            componentsCache.put(clazz, instance);
+            componentsCache = componentsCache.patch(map {clazz -> instance});
+//            componentsCache.put(clazz, instance);
         }
         return instantiated;
     }
@@ -367,9 +379,14 @@ shared class RegistryImpl satisfies Registry  {
         if(is Exception error = checkEnchancers(target, wrappers)) {
             throw error;
         }
-        enhancerComponents.put(target, wrappers);
+//        enhancerComponents.put(target, wrappers);
         log.info("Registry.registerEnchancer: register enhancers ``wrappers`` successfully");
-        return this;
+        return withState {
+            metaRegistry = metaRegistry;
+            parameters = parameters;
+            enhancerComponents = enhancerComponents.patch(map{target -> wrappers});
+            componentsCache = componentsCache;
+        };
     }
 }
 
