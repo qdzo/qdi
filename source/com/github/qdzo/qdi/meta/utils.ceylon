@@ -90,7 +90,6 @@ shared Type<> resolveOpenType<T>(Class<T> parentClass, OpenType openType) {
 shared Type<>[] resolveOpenTypes(Class<> parentClass, List<OpenType> openTypes)
         => [for (openType in openTypes) resolveOpenType(parentClass, openType)];
 
-// TODO move to reflectionTools.ceylon file
 shared Class<T> ->[[Class<Anything>*], [Interface<Anything>*]]
 describeClass<T>(Class<T> clazz) {
 

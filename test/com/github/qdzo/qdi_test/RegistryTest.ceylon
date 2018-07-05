@@ -1,3 +1,9 @@
+import ceylon.logging {
+    addLogWriter,
+    writeSimpleLog,
+    defaultPriority,
+    trace
+}
 import ceylon.test {
     beforeTestRun,
     test,
@@ -7,21 +13,21 @@ import ceylon.test {
     tag
 }
 
+import com.github.qdzo.qdi {
+    newRegistry
+}
 import com.github.qdzo.qdi.meta {
     describeClass,
     getClassHierarchyExceptBasicClasses,
     getInterfaceHierarhy
 }
-import com.github.qdzo.qdi {
-    newRegistry
-}
 beforeTestRun
 shared void setupLogger() {
-//    addLogWriter(writeSimpleLog);
-//    defaultPriority =
-//             trace
+    addLogWriter(writeSimpleLog);
+    defaultPriority =
+             trace
 //             info
-//    ;
+    ;
 }
 
 

@@ -34,16 +34,6 @@ shared class RegistryImpl satisfies Registry  {
 
     late variable Map<Class<>, Anything> componentsCache;
 
-//    MutableMap<[Class<>, String], Anything> parameters
-//            = HashMap<[Class<>, String], Anything> {};
-//
-//    MutableMap<Class<>, Anything> componentsCache
-//            = HashMap<Class<>, Anything> {};
-//
-//    MutableMap<Interface<>, [Class<>+]> enhancerComponents
-//            = HashMap<Interface<>, [Class<>+]> {};
-
-
     Exception? checkEnhancerInterfaceCompatibility<Target, Wrapper>(
             Type<Target>->[Class<>[], Interface<>[]] targetInfo,
             Class<Wrapper>->[Class<>[], Interface<>[]] wrapperInfo) {
@@ -210,10 +200,6 @@ shared class RegistryImpl satisfies Registry  {
                         "they should be specified as parameters or created instances basicTypes";
             return [clazz, Exception(errorMsg)];
         }
-//        if(clazz.declaration.abstract) {
-//            value errorMsg = "Registry do not create ";
-//            return [clazz, Exception(errorMsg)];
-//        }
         return [clazz, tryToCreateInstance(clazz)];
     }
 
@@ -257,7 +243,6 @@ shared class RegistryImpl satisfies Registry  {
                     log.trace(() => "Registry.wrapClassWithEnchancer: create wrapper <``e``> for type <``clazz``>");
                     wrapped = newWrapped;
                 }
-//                assert(is Target wrapped);
                 log.debug(() => "Registry.wrapClassWithEnchancer: instance of <``clazz``> successfully wrapped");
                 return  wrapped;
             }

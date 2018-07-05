@@ -44,7 +44,7 @@ shared class MetaRegistry {
     }
 
 //        shared Boolean isRegistered<T>(Class<T> clazz) => componentsCache[clazz] exists;
-//
+    
     shared [Interface<>*] getClassInterfaces<T>(Class<T> clazz)
             => if(exists [_, ifaces] = components[clazz]) then ifaces else [];
 
