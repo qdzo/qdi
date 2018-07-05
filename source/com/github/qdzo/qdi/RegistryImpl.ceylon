@@ -191,14 +191,13 @@ shared class RegistryImpl satisfies Registry  {
     shared actual Registry register<T>(Class<T>|Object typeOrInstance) {
         value clazz->inst = getClassInstancePair(typeOrInstance);
 //        componentsCache.put(clazz, inst);
-        // TODO: make immutable (Vitaly 05.07.2018)
-        metaRegistry.registerMetaInfoForType(clazz);
-
+        
+//        metaRegistry.registerMetaInfoForType(clazz)
         log.info("Registry.register: register " +
                     (if(exists inst) then "instantiated: <``inst``> for " else "") +
                 "type <``clazz``>");
         return withState {
-            metaRegistry = metaRegistry;
+            metaRegistry = metaRegistry.registerMetaInfoForType(clazz);
             parameters = parameters;
             enhancerComponents = enhancerComponents;
             componentsCache = componentsCache.patch(map{clazz -> inst});

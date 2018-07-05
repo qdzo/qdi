@@ -12,32 +12,49 @@ import ceylon.language.meta.model {
 
 shared class MetaRegistry {
 
-    MutableMap<Class<>, [[Class<>*], [Interface<>*]]>
-    components = HashMap<Class<>, [[Class<>*], [Interface<>*]]> {};
+//    MutableMap<Class<>, [[Class<>*], [Interface<>*]]>
+//    components = HashMap<Class<>, [[Class<>*], [Interface<>*]]> {};
+//
+//    MutableMap<Class<>, Class<>>
+//    extendComponents = HashMap<Class<>, Class<>> {};
+//
+//    MutableMap<Interface<>, Class<>>
+//    interfaceComponents = HashMap<Interface<>, Class<>> {};
 
-    MutableMap<Class<>, Class<>>
-    extendComponents = HashMap<Class<>, Class<>> {};
 
-    MutableMap<Interface<>, Class<>>
-    interfaceComponents = HashMap<Interface<>, Class<>> {};
+    Map<Class<>, [[Class<>*], [Interface<>*]]> components;
+
+    Map<Class<>, Class<>> extendComponents;
+
+    Map<Interface<>, Class<>> interfaceComponents;
 
     shared new({Class<Anything>*} components = empty) {
 
         value described = components.collect(describeClass);
 
-        this.components.putAll(described);
+        this.components = map (described);
 
-        this.extendComponents.putAll {
+        this.extendComponents = map {
             for (clazz-> [extClazzez, __] in described)
             for(extClazz in extClazzez)
             extClazz -> clazz
         };
 
-        this.interfaceComponents.putAll {
+        this.interfaceComponents = map {
             for (clazz->[ __, ifaces] in described)
             for (iface in ifaces)
             iface -> clazz
         };
+    }
+
+    new withState (
+            Map<Class<>, [[Class<>*], [Interface<>*]]> components,
+            Map<Class<>, Class<>> extendComponents,
+            Map<Interface<>, Class<>> interfaceComponents
+            ) {
+        this.components = components;
+        this.extendComponents = extendComponents;
+        this.interfaceComponents = interfaceComponents;
     }
 
 //        shared Boolean isRegistered<T>(Class<T> clazz) => componentsCache[clazz] exists;
@@ -98,12 +115,21 @@ shared class MetaRegistry {
         return empty;
     }
 
-    shared void registerMetaInfoForType<T>(Class<T> t) {
+    shared MetaRegistry registerMetaInfoForType<T>(Class<T> t) {
         log.info("MetaRegistry.describeAndRegisterType: register type <``t``>");
         value clazz->[extClazzez, ifaces] = describeClass(t);
-        components.put(clazz, [extClazzez, ifaces]);
-        extendComponents.putAll { for (extClazz in extClazzez) extClazz -> clazz };
-        interfaceComponents.putAll { for (iface in ifaces) iface -> clazz };
+//        components.put(clazz, [extClazzez, ifaces]);
+//        extendComponents.putAll { for (extClazz in extClazzez) extClazz -> clazz };
+//        interfaceComponents.putAll { for (iface in ifaces) iface -> clazz };
+        return withState {
+            components = components.patch(map {clazz -> [extClazzez, ifaces]});
+            extendComponents = extendComponents.patch(map {
+                for (extClazz in extClazzez) extClazz -> clazz
+            });
+            interfaceComponents = interfaceComponents.patch(map {
+                for (iface in ifaces) iface -> clazz
+            });
+        };
     }
 
     shared void inspect() {
