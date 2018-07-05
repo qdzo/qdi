@@ -12,6 +12,16 @@ import ceylon.logging {
     logger
 }
 
+import com.github.qdzo.qdi.meta {
+    describeClass,
+    getInterfaceHierarhy,
+    MetaRegistry,
+    resolveConstructorParameters,
+    getClassInstancePair,
+    basicTypes,
+    Parameter
+}
+
 
 Logger log = logger(`module`);
 
@@ -361,6 +371,14 @@ shared class RegistryImpl satisfies Registry  {
         log.info("Registry.registerEnchancer: register enhancers ``wrappers`` successfully");
         return this;
     }
-
-
 }
+
+shared Registry newRegistry(
+        {Class<>|Object*} components = empty,
+        {[Class<>, String, Anything]*} parameters = empty,
+        {[Interface<>, [Class<>+]]*} enhancers = empty
+        ) => RegistryImpl {
+    components = components;
+    parameters = parameters;
+    enhancers = enhancers;
+};

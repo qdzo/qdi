@@ -1,23 +1,19 @@
-import ceylon.logging {
-	addLogWriter,
-	writeSimpleLog,
-	defaultPriority,
-	trace
-}
 import ceylon.test {
-	beforeTestRun,
-	test,
-	assertEquals,
-	assertIs,
-	assertThatException,
-	tag
+    beforeTestRun,
+    test,
+    assertEquals,
+    assertIs,
+    assertThatException,
+    tag
 }
 
+import com.github.qdzo.qdi.meta {
+    describeClass,
+    getClassHierarchyExceptBasicClasses,
+    getInterfaceHierarhy
+}
 import com.github.qdzo.qdi {
-	describeClass,
-	getClassHierarchyExceptBasicClasses,
-	getInterfaceHierarhy,
-	RegistryImpl
+    newRegistry
 }
 beforeTestRun
 shared void setupLogger() {
@@ -91,20 +87,20 @@ class Box2(shared Atom2 atom = Atom2(2))  {
 // ----------------------------------------------------
 test
 shared void registryShouldRegisterType_whenRegisterCalled() {
-    value registry = RegistryImpl();
+    value registry = newRegistry();
     registry.register(`Atom`);
     assertIs(registry.getInstance(`Atom`), `Atom`);
 }
 
 test
 shared void registryShouldRegisterType_whenRegistryInitiatedWithParams() {
-    value registry = RegistryImpl {`Atom`};
+    value registry = newRegistry {`Atom`};
     assertIs(registry.getInstance(`Atom`), `Atom`);
 }
 
 test
 shared void registryShouldRegisterParams_whenRegistryInitiatedWithParams() {
-    value registry = RegistryImpl {
+    value registry = newRegistry {
         components = {`Box`};
         parameters = {[`Box`, "atom", Atom()]};
     };
@@ -113,26 +109,26 @@ shared void registryShouldRegisterParams_whenRegistryInitiatedWithParams() {
 
 test
 shared void registryShouldCreateInstance_ForTypeWithoutParameters() {
-    value registry = RegistryImpl {`Atom`};
+    value registry = newRegistry {`Atom`};
     assertIs(registry.getInstance(`Atom`), `Atom`);
 }
 
 test
 shared void registryShouldCreateInstance_ForTypeWithExplicitConstructorWithoutParameters() {
-    value registry = RegistryImpl {`Atom1`};
+    value registry = newRegistry {`Atom1`};
     assertIs(registry.getInstance(`Atom1`), `Atom1`);
 }
 
 
 test
 shared void registryShouldCreateInstance_ForTypeWithExplicitConstructorWithOneParameter() {
-    value registry = RegistryImpl {`Atom`, `Box1`};
+    value registry = newRegistry {`Atom`, `Box1`};
     assertIs(registry.getInstance(`Box1`), `Box1`);
 }
 
 test
 shared void registryShouldCreateInstance_WithOneRegisteredDependencyType() {
-    value registry = RegistryImpl();
+    value registry = newRegistry();
     registry.register(`Atom`);
     registry.register(`Box`);
     value box = registry.getInstance(`Box`);
@@ -141,7 +137,7 @@ shared void registryShouldCreateInstance_WithOneRegisteredDependencyType() {
 
 test
 shared void registryShouldRegisterTypeWithInstanceInRegisterMethodCall() {
-    value registry = RegistryImpl();
+    value registry = newRegistry();
     registry.register(Box(Atom()));
     value box = registry.getInstance(`Box`);
     assertIs(box, `Box`);
@@ -149,14 +145,14 @@ shared void registryShouldRegisterTypeWithInstanceInRegisterMethodCall() {
 
 test
 shared void registryShouldRegisterTypeWithInstanceInConstuctor() {
-    value registry = RegistryImpl { Box(Atom()) };
+    value registry = newRegistry { Box(Atom()) };
     value box = registry.getInstance(`Box`);
     assertIs(box, `Box`);
 }
 
 test
 shared void registryShouldCreateInstanceWithSomeSimpleParameters() {
-    value registry = RegistryImpl { `Person` };
+    value registry = newRegistry { `Person` };
     registry.registerParameter(`Person`, "name", "Vika");
     registry.registerParameter(`Person`, "age", 1);
     value person = registry.getInstance(`Person`);
@@ -167,7 +163,7 @@ shared void registryShouldCreateInstanceWithSomeSimpleParameters() {
 
 test
 shared void registryShouldThrowExceptinWhenThereAreNoSomeParameters() {
-    value registry = RegistryImpl { `Person` };
+    value registry = newRegistry { `Person` };
     registry.registerParameter(`Person`, "age", 1);
     assertThatException(() => registry.getInstance(`Person`))
         .hasMessage("Registry.getInstance: can't createInstance for class <" +`Person`.string + ">");
@@ -176,7 +172,7 @@ shared void registryShouldThrowExceptinWhenThereAreNoSomeParameters() {
 tag("default")
 test
 shared void registryShouldCreateInstanceWithDefaultParameter() {
-    value registry = RegistryImpl {`Box2`};
+    value registry = newRegistry {`Box2`};
     assertIs(registry.getInstance(`Box2`), `Box2`);
 }
 
@@ -200,13 +196,13 @@ class Matryoshka0()  {
 
 test
 shared void registryShouldCreateDeeplyNestedInstances() {
-    value registry = RegistryImpl { `Matryoshka0`, `Matryoshka1`, `Matryoshka2`, `Matryoshka3` };
+    value registry = newRegistry { `Matryoshka0`, `Matryoshka1`, `Matryoshka2`, `Matryoshka3` };
     assertIs(registry.getInstance(`Matryoshka1`), `Matryoshka1`);
 }
 
 test
 shared void registryShouldCreateDeeplyNestedInstancesWithDirectRefenecesAndWithoutExplicitRegistration() {
-    value registry = RegistryImpl { `Matryoshka1` };
+    value registry = newRegistry { `Matryoshka1` };
     assertIs(registry.getInstance(`Matryoshka1`), `Matryoshka1`);
 }
 
@@ -218,14 +214,14 @@ object orange extends Fruit() {}
 
 test
 shared void registryShouldReturnInstanceForCaseClasses() {
-    value registry = RegistryImpl { apple };
+    value registry = newRegistry { apple };
     value actual = registry.getInstance(`Fruit`);
     assertEquals(actual, apple);
 }
 
 //test
 //shared void registryShouldReturnInstanceForCaseClasses1() {
-//    value registry = RegistryImpl { `Fruit` };
+//    value registry = newRegistry { `Fruit` };
 //    value actual = registry.getInstance(`Fruit`);
 //    assertEquals(actual, apple);
 //}
@@ -237,7 +233,7 @@ class Address(String|Street street) { }
 
 test
 shared void registryShouldCreateInstanceWithUnionTypeDependency() {
-    value registry = RegistryImpl { `Street`, `Address` };
+    value registry = newRegistry { `Street`, `Address` };
     value actual = registry.getInstance(`Address`);
     assertIs(actual, `Address`);
 }
@@ -256,7 +252,7 @@ class AsiaPostal(shared Postman postman = AsiaPostman()) { }
 
 test
 shared void registryShouldCreateInstanceWithIntersectionTypeDependency() {
-    value registry = RegistryImpl { `RuPostalStore`, `RuPostman`, `AsiaPostman` };
+    value registry = newRegistry { `RuPostalStore`, `RuPostman`, `AsiaPostman` };
     value actual = registry.getInstance(`RuPostalStore`);
     assertIs(actual, `RuPostalStore`);
 }
@@ -271,7 +267,7 @@ class GenericTanker<T,V>(GenericBox<T> box1, GenericBox<V> box2)  { }
 tag("generic")
 test
 shared void registryShouldCreateInstanceWithOneGenericTypeDependency() {
-    value registry = RegistryImpl { `GenericTrackCar<String>`, `GenericBox<String>`, "String item" };
+    value registry = newRegistry { `GenericTrackCar<String>`, `GenericBox<String>`, "String item" };
     value actual = registry.getInstance(`GenericTrackCar<String>`);
     assertIs(actual, `GenericTrackCar<String>`);
 }
@@ -279,7 +275,7 @@ shared void registryShouldCreateInstanceWithOneGenericTypeDependency() {
 tag("generic")
 test
 shared void registryShouldCreateInstanceWithTwoGenericTypeDependency() {
-    value registry = RegistryImpl {
+    value registry = newRegistry {
         `GenericTanker<String, Integer>`,
         `GenericBox<String>`,
         `GenericBox<Integer>`,
@@ -297,7 +293,7 @@ class IntegerBox(Integer data) extends GenericBox<Integer>(data) { }
 tag("generic")
 test
 shared void registryShouldCreateInstanceWithTwoGenericTypeDependencyAndExtendedClasses() {
-    value registry = RegistryImpl {
+    value registry = newRegistry {
         `GenericTanker<String, Integer>`,
         `StringBox`,
         `IntegerBox`,
@@ -311,7 +307,7 @@ shared void registryShouldCreateInstanceWithTwoGenericTypeDependencyAndExtendedC
 tag("generic")
 test
 shared void registryShouldCreateInstanceWithTwoGenericTypeDependencyAndExtendedClasses2() {
-    value registry = RegistryImpl {
+    value registry = newRegistry {
         `GenericTanker<String, Integer>`,
         `StringBox2`,
         `IntegerBox`,
@@ -327,7 +323,7 @@ class IntegerTanker(IntegerBox box1, IntegerBox box2) extends GenericTanker<Inte
 tag("generic")
 test
 shared void registryShouldCreateInstanceWithTwoGenericTypeDependencyAndExtendedClasses3() {
-    value registry = RegistryImpl {
+    value registry = newRegistry {
         `IntegerTanker`,
         `StringBox`,
         `IntegerBox`,
@@ -360,7 +356,7 @@ class BikeSeller<BikeType>(BikeType bike)  {
 //tag("repl")
 test
 shared void registryShouldCreateInstanceWithInvariantDependency() {
-    value registry = RegistryImpl {
+    value registry = newRegistry {
         `Bicycler<CrossBike>`,
         `CrossBike`
     };
@@ -371,7 +367,7 @@ shared void registryShouldCreateInstanceWithInvariantDependency() {
 tag("repl")
 test
 shared void registryShouldCreateInstanceWithoutRegistrationIfWeHaveDirectReferenceToClass() {
-    value registry = RegistryImpl {
+    value registry = newRegistry {
         `Bicycler<CrossBike>`// It's wonderfull - that we can create instances without registering it (if we have direct reference in constructor to classes and if they have default parameters)
     };
     value actual = registry.getInstance(`Bicycler<CrossBike>`);
@@ -381,7 +377,7 @@ shared void registryShouldCreateInstanceWithoutRegistrationIfWeHaveDirectReferen
 tag("generic")
 test
 shared void registryShouldCreateInstanceWithExtendedTypeDependency() {
-    value registry = RegistryImpl {
+    value registry = newRegistry {
         `Bicycler<CrossBike>`,
         `ElectroBike`
     };
@@ -395,7 +391,7 @@ shared void registryShouldCreateInstanceWithExtendedTypeDependency() {
 tag("if")
 test
 shared void registryShouldCreateInstanceWithInterfaceDependency() {
-    value registry = RegistryImpl {`RuPostman`, `RuPostal`};
+    value registry = newRegistry {`RuPostman`, `RuPostal`};
     value postal = registry.getInstance(`RuPostal`);
     assertIs(postal, `RuPostal`);
     assertIs(postal.postman, `RuPostman`);
@@ -404,7 +400,7 @@ shared void registryShouldCreateInstanceWithInterfaceDependency() {
 tag("if")
 test
 shared void registryShouldCreateInstanceForGivenInterface() {
-    value registry = RegistryImpl {`RuPostman`};
+    value registry = newRegistry {`RuPostman`};
     value postman = registry.getInstance(`Postman`);
     assertIs(postman, `RuPostman`);
 }
@@ -413,14 +409,14 @@ tag("if")
 //tag("default")
 test
 shared void registryShouldCreateInstanceForGivenInterfaceWithItsDefaultParameter() {
-    value registry = RegistryImpl {`AsiaPostal`};
+    value registry = newRegistry {`AsiaPostal`};
     assertIs(registry.getInstance(`AsiaPostal`), `AsiaPostal`);
 }
 
 tag("if")
 test
 shared void registryShouldReturnSameInstanceForGivenTwoInterfaces() {
-    value registry = RegistryImpl {`RuPostman`};
+    value registry = newRegistry {`RuPostman`};
     value postman = registry.getInstance(`Postman`);
     value operator = registry.getInstance(`Operator`);
     assertIs(postman, `RuPostman`);
@@ -438,7 +434,7 @@ class Cat() extends Animal() {}
 tag("abstract")
 test
 shared void registryShouldCreateInstanceForAbstractClass() {
-    value registry = RegistryImpl {`Dog`};
+    value registry = newRegistry {`Dog`};
     value animal = registry.getInstance(`Animal`);
     assertIs(animal, `Dog`);
 }
@@ -473,7 +469,7 @@ class FakeDecorator2() satisfies Service {
 tag("enhancer")
 test
 shared void registryShouldCreateInstanceWithGivenEnchancer() {
-    value registry = RegistryImpl {`DbService`, "users"};
+    value registry = newRegistry {`DbService`, "users"};
     registry.registerEnhancer(`Service`, [`ServiceDbSchemaDecorator`]);
     value service = registry.getInstance(`Service`);
     assertIs(service, `ServiceDbSchemaDecorator`);
@@ -483,7 +479,7 @@ shared void registryShouldCreateInstanceWithGivenEnchancer() {
 tag("enhancer")
 test
 shared void registryShouldThrowExceptionWhenRegisterEnchancerWithWrongInterface() {
-    value registry = RegistryImpl {`Service`, "users"};
+    value registry = newRegistry {`Service`, "users"};
     assertThatException(() => registry.registerEnhancer(`Service`, [`FakeDecorator`]))
     .hasMessage("Enchancer class <" + `FakeDecorator`.string +
                 "> not compatible with origin class <" + `Service`.string +
@@ -493,18 +489,17 @@ shared void registryShouldThrowExceptionWhenRegisterEnchancerWithWrongInterface(
 tag("enhancer")
 test
 shared void registryShouldThrowExceptionWhenRegisterEnchancerWithWrongInterface2() {
-    value registry = RegistryImpl {`DbService`, "users"};
+    value registry = newRegistry {`DbService`, "users"};
     assertThatException(() => registry.registerEnhancer(`Service`, [`FakeDecorator2`]))
     .hasMessage("Enhancer class <" + `FakeDecorator2`.string +
             "> must have at least one constructor parameter with <"
             + `Service`.string + "> or some of it interfaces []");
 }
 
-tag("now")
 tag("enhancer")
 test
 shared void registryShouldCreateInstanceWithTwoGivenEnchancers() {
-    value registry = RegistryImpl {
+    value registry = newRegistry {
         components = { DbService("users") };
         enhancers = {
             [`Service`, [ `ServiceDbCredetionalsDecorator`, `ServiceDbSchemaDecorator` ]]

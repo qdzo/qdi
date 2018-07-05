@@ -15,8 +15,14 @@ import ceylon.language.meta.model {
     Class,
     Interface
 }
+import ceylon.logging {
+    Logger,
+    logger
+}
 
-class Parameter(
+Logger log = logger(`module`);
+
+shared class Parameter(
         shared String name,
         shared Type<> type,
         shared Boolean defaulted
@@ -24,7 +30,7 @@ class Parameter(
     string => "Parameter(name=``name``, type=``type``, defaulted=``defaulted``)";
 }
 
-{Parameter*} resolveConstructorParameters<T>(Class<T> t) {
+shared {Parameter*} resolveConstructorParameters<T>(Class<T> t) {
     log.debug(() => "Registry.constructParameters: parameters for class <``t``>");
 
     assert(exists parameterDeclarations
@@ -41,7 +47,7 @@ class Parameter(
 
 "Gets container class and open type, which need to resolve"
 suppressWarnings("expressionTypeNothing")
-Type<> resolveOpenType<T>(Class<T> parentClass, OpenType openType) {
+shared Type<> resolveOpenType<T>(Class<T> parentClass, OpenType openType) {
     switch(ot = openType)
     case (is OpenClassType) {
         log.debug(() => "resolveOpenType: OpenClassType: <``ot``>");
@@ -81,7 +87,7 @@ Type<> resolveOpenType<T>(Class<T> parentClass, OpenType openType) {
     }
 }
 
-Type<>[] resolveOpenTypes(Class<> parentClass, List<OpenType> openTypes)
+shared Type<>[] resolveOpenTypes(Class<> parentClass, List<OpenType> openTypes)
         => [for (openType in openTypes) resolveOpenType(parentClass, openType)];
 
 // TODO move to reflectionTools.ceylon file
@@ -93,8 +99,8 @@ describeClass<T>(Class<T> clazz) {
     return clazz -> [extendedClazzez, interfaces];
 }
 
-[Class<>+] basicTypes = [`String`, `Integer`, `Float`, `Boolean`, `Character`, `Basic`, `Object`, `Anything`];
-Boolean isBasicType(Type<> t) => any { for (bt in basicTypes) t.exactly(bt) };
+shared [Class<>+] basicTypes = [`String`, `Integer`, `Float`, `Boolean`, `Character`, `Basic`, `Object`, `Anything`];
+shared Boolean isBasicType(Type<> t) => any { for (bt in basicTypes) t.exactly(bt) };
 
 shared [Interface<>*] getInterfaceHierarhyExeptBasicTypes<T>(Interface<T>|Class<T> ifaceOrClass) {
     if(isBasicType(ifaceOrClass)){
@@ -129,7 +135,7 @@ getClassHierarchyExceptBasicClasses<T>(Class<T> clazz) {
 }
 
 
-Class<> -> Anything getClassInstancePair<T>(Class<T>|T classOrInstance) {
+shared Class<> -> Anything getClassInstancePair<T>(Class<T>|T classOrInstance) {
     if(is Class<T> classOrInstance) {
         return classOrInstance->null;
     }

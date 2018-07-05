@@ -10,7 +10,7 @@ import ceylon.language.meta.model {
     Class
 }
 
-class MetaRegistry {
+shared class MetaRegistry {
 
     MutableMap<Class<>, [[Class<>*], [Interface<>*]]>
     components = HashMap<Class<>, [[Class<>*], [Interface<>*]]> {};
