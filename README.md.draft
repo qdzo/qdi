@@ -1,0 +1,211 @@
+<!-- markdown-toc start - Don't edit this section. Run M-x markdown-toc-refresh-toc -->
+**Table of Contents**
+
+- [QDI - Ceylon Dependency Injection for purists](#qdi---ceylon-dependency-injection-for-purists)
+- [Description](#description)
+    - [Features](#features)
+    - [Very opinionated library:](#very-opinionated-library)
+    - [Inspirations](#inspirations)
+- [Build](#build)
+    - [Build Requirenments](#build-requirenments)
+    - [Manual build and install](#manual-build-and-install)
+- [Usage](#usage)
+    - [Basic usage:](#basic-usage)
+    - [AOP via enhancers (decorators)](#aop-via-enhancers-decorators)
+    - [Direct parameters](#direct-parameters)
+- [Licence](#licence)
+
+<!-- markdown-toc end -->
+
+# QDI - Ceylon Dependency Injection for purists
+
+# Description #
+
+QDI - is ceylon cross-platform dependency injection library (not framework).
+It highly-use ceylon meta-model for intantiating objects.
+Its very lightweight: no complex container staff.
+Folows one way - instantiate objects without direct passing it's dependencies.
+
+## Features ##
+
+- use ceylon meta-model to intantiate objects, thus - crossplatform (jvm/js)
+- fluent `registy` interface (and immutable by default)
+- > `registry` at every step is a new immutable registry.
+- you can combine multiple registies and get new
+- support resolving union/intersection dependencies, type-variance dependencies
+- support instantiating direct-dependeices (non-interfaces) without registration (thanks to ceylon-meta-model)
+- cache instances by default
+- use decorators as some sort of AOP.
+
+## Very opinionated library: ##
+
+TODO: organize this part
+
+- only constructor dependency injection support
+> I beleive that other DI technics (setters, interfaces) bad:
+- setters embrace mutability and partial construction - 
+- interfaces embrace coupling,
+- no any annotation support
+- - they produce coupling. If you in some moment will dislike my lib - you can remove it with a little pain as possible.
+- replace library with your own code (or back) very easy.
+- only one interface registration at same time.
+
+## Inspirations ##
+
+TODO: write more or delete.
+PicoContainer
+
+# Build #
+
+## Build Requirenments ##
+
+- Oracle/OpenJDK 8
+- Ceylon SDK 1.3.3
+- ant 1.9 >
+
+## Manual build and install ##
+
+```
+git clone https://github.com/qdzo/qdi && cd qdi
+ant install
+```
+
+# Usage #
+
+## Basic usage: ##
+
+```
+import com.github.qdzo.qdi { newRegistry }
+
+shared void run() {
+    value registry = newRegistry {
+        `MongoPersonDao`,
+        `HttpPersonService`,
+        `App`
+    };
+    value app = registry.getInstance(`App`);
+    app.start();
+}
+```
+
+- newRegistry  creates new immutable registry.
+- discover and register interace/class hierarhy of every given classes.
+- `getInstance` will find and instantiate given class and all its dependencies
+
+You can extract common part in function and then use it for different configurations:
+
+```ceylon
+Registy commonRegistry = newRegistry {
+        `HttpPersonService`,
+        `App`
+};
+
+shared void runTest() {
+    value registry = commonRegistry.register(`FakePersonDao`);
+    value app = registry.getInstance(`App`);
+    app.start();
+}
+
+shared void runProd() {
+    value registry = commonRegistry.register(`MongoPersonDao`);
+    value app = registry.getInstance(`App`);
+    app.start();
+}
+```
+
+You can use these methods at once - every registry is separated and creates it's own instances. They don't collide 
+
+```ceylon
+shared void run() {
+    value testRegistry = commonRegistry.register(`FakePersonDao`).getInstance(`App`);
+    value prodRegistry = commonRegistry.register(`MongoPersonDao`).getInstance(`App`);
+    value testApp = testRegistry.getInstance(`App`);
+    value prodApp = testRegistry.getInstance(`App`);
+    testApp.start();
+    prodApp.start();
+}
+```
+
+You can also register instances, not classes
+
+```ceylon
+shared void run() {
+    value registry = newRegistry { FakePersonDao("personCollection"), `App`}
+    value app = registry.getInstance(`App`);
+}
+```
+
+## AOP via enhancers (decorators) ##
+
+/QDI/ supports registering decorators for interfaces and wrap needed instances with them.
+
+Enhancer is class which should follow 2 rules:
+
+1. Decorator should satisfy the same interface that it wrapped.
+2. Decorator should take at least one constructor parameter with same interface.
+
+You can combine multiple enhancers for.
+
+Enhancer registration-record is tuple:
+
+  `[WrappedInterface, 'list of enhancers']`
+
+Simple logger enhancer:
+
+```ceylon
+interface MailService {
+   shared formal void send(Email email);
+}
+// main service class
+class FakeMailService() satisfies MailService {
+   shared actual void send(Email email) {
+      print("FakeMailService send email \"``email``\"");
+   }
+   ...
+}
+
+// logger decorator
+class MailServiceLoggerDecorator(MailService service) 
+  satisfies MailService {
+
+   shared actual void send(Email email) {
+      log.info("start sending email: \"``email``\"");
+      service.send(email);
+      log.info("sending email success");
+   }
+}
+
+shared void run() {
+   value registry = newRegistry {
+       components = { `FakeMailService` };
+       enhancers = { [`MailService`, `MailServiceLoggerDecorator`] };
+   }
+   value mailSender = registry.getInstance(`MailService`);
+   mailSender.send(Email("Hello"));
+}
+
+/* will prints:
+   
+   start sending email: "HELLO"
+   FakeMailService send email \"HELLO\"
+   sending email success
+*/
+```
+1. described and registered `FakeMailService` class.
+2. registered `MailServiceLoggerDecorator` enhancer for interface `MailService`
+3. when `MailService` requested - `FakeMailService` will be created and wrapped with `MailServiceLoggerDecorator`.
+
+## Direct parameters ##
+
+You can register direct parameters for classes.
+parameter registration-record is tuple:
+
+`[RegisteredClass, parameterName, value]`
+
+TODO add examples here
+
+> see tests for more examples
+
+# Licence #
+
+Distributed under the Apache License, Version 2.0.
