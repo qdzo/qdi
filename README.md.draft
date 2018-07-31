@@ -24,14 +24,14 @@
 QDI - is ceylon cross-platform dependency injection library (not framework).
 It highly-use ceylon meta-model for intantiating objects.
 Its very lightweight: no complex container staff.
-Folows one way - instantiate objects without direct passing it's dependencies.
+Follows one way - instantiate objects without direct passing it's dependencies.
 
 ## Features ##
 
 - use ceylon meta-model to intantiate objects, thus - crossplatform (jvm/js)
-- fluent `registy` interface (and immutable by default)
+- fluent `registry` interface (and immutable by default)
 - > `registry` at every step is a new immutable registry.
-- you can combine multiple registies and get new
+- you can combine multiple registries
 - support resolving union/intersection dependencies, type-variance dependencies
 - support instantiating direct-dependeices (non-interfaces) without registration (thanks to ceylon-meta-model)
 - cache instances by default
@@ -44,7 +44,7 @@ TODO: organize this part
 - only constructor dependency injection support
 > I beleive that other DI technics (setters, interfaces) bad:
 - setters embrace mutability and partial construction - 
-- interfaces embrace coupling,
+- interfaces embrace coupling (when you forced to implement such interfaces only for lib),
 - no any annotation support
 - - they produce coupling. If you in some moment will dislike my lib - you can remove it with a little pain as possible.
 - replace library with your own code (or back) very easy.
