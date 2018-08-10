@@ -370,7 +370,6 @@ shared void registryShouldCreateInstanceWithInvariantDependency() {
     assertIs(actual, `Bicycler<CrossBike>`);
 }
 
-tag("repl")
 test
 shared void registryShouldCreateInstanceWithoutRegistrationIfWeHaveDirectReferenceToClass() {
     value registry = newRegistry {
@@ -476,8 +475,8 @@ tag("enhancer")
 test
 shared void registryShouldCreateInstanceWithGivenEnchancer() {
     value registry = newRegistry {`DbService`, "users"};
-    registry.registerEnhancer(`Service`, [`ServiceDbSchemaDecorator`]);
-    value service = registry.getInstance(`Service`);
+    value registryWithEnhancer = registry.registerEnhancer(`Service`, [`ServiceDbSchemaDecorator`]);
+    value service = registryWithEnhancer.getInstance(`Service`);
     assertIs(service, `ServiceDbSchemaDecorator`);
     assertEquals(service.connection, "users://users");
 }
