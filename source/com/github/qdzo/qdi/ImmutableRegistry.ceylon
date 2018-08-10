@@ -24,7 +24,18 @@ Logger log = logger(`module`);
 // ----------------------------------------------------
 
 
-shared class RegistryImpl satisfies Registry  {
+"Immutable Registry - is container that stores information
+ about classes, enhancers, parameters and can instantiate them later.
+
+ Every register-method call returns new Registry with additional components/enhancers.
+ Old Registry stays the same.
+
+ > This way give you flexibility of creating separated registries that shares some components.
+
+ Registry has one possible internal mutation - caching instances.
+ That cache also copied to new registries wich created with register methods.
+ "
+shared class ImmutableRegistry satisfies Registry  {
 
     late MetaRegistry metaRegistry;
 
@@ -63,6 +74,7 @@ shared class RegistryImpl satisfies Registry  {
                         "with origin class <``targetInfo.key``>: missed interfaces ``missed``");
     }
 
+    "Checks if enhancer takes at least one parameter with the same interface that it wraps."
     Exception? checkEnhancerConstructorCompatibility<Target, Wrapper>(
             Type<Target>->[Class<>[], Interface<>[]] targetInfo,
             Class<Wrapper>->[Class<>[], Interface<>[]] wrapperInfo) {
@@ -88,6 +100,7 @@ shared class RegistryImpl satisfies Registry  {
                 "one constructor parameter with <``targetClass``> or some of it interfaces ``targetInterfaces``");
     }
 
+    "Silly check-function composition, which don't agregate Exceptions. Returns first"
     Exception? checkEnchancer<T, W>(Class<T>|Interface<T> target, Class<W> wrapper) {
         log.debug(() =>"Registry.checkEnchancer: check enhancer ``wrapper`` compatibility with type <``target``>");
         value targetInfo =
@@ -101,6 +114,7 @@ shared class RegistryImpl satisfies Registry  {
                else checkEnhancerConstructorCompatibility(targetInfo, wrapperInfo);
     }
 
+    "Another silly check-function composition that don't aggregate errors in nice way."
     Exception? checkEnchancers<T>(Class<T>|Interface<T> target, [Class<>+] wrappers) {
         log.debug(() =>"Registry.checkEnchancers: check enhancers ``wrappers`` compatibility with type <``target``>");
         return checkEnchancer(target, wrappers.first)
@@ -132,8 +146,13 @@ shared class RegistryImpl satisfies Registry  {
     }
 
     shared new(
+            "Components - class declarations or instances, which will be instantiated
+             and returned by getInstance method"
             {Class<>|Object*} components = empty,
+            "Direct parameters for custom classes.
+             Shape: [class-for-injection, constructor-parameter-name, value-to-inject]"
             {[Class<>, String, Anything]*} parameters = empty,
+            "Enhancers is simple wrapper classes, wich can be used as adhoc AOP."
             {[Interface<>, [Class<>+]]*} enhancers = empty) {
 
         value classInstencePairs = components.collect(getClassInstancePair);
@@ -154,6 +173,7 @@ shared class RegistryImpl satisfies Registry  {
         };
     }
 
+    "Internal constructor, need for sefl-copying"
     new withState(
             MetaRegistry metaRegistry,
             Map<[Class<>, String], Anything> parameters,
@@ -165,6 +185,7 @@ shared class RegistryImpl satisfies Registry  {
         this.enhancerComponents = enhancerComponents;
         this.componentsCache = componentsCache;
     }
+
 
 
     shared actual Registry registerParameter<T>(Class<T> t, String param, Anything val) {
@@ -228,11 +249,11 @@ shared class RegistryImpl satisfies Registry  {
             log.debug(() => "Registry.wrapClassWithEnchancer: instance <``instance else "null"``> created for type <``clazz``>");
             value enhancers = enhancerComponents.getOrDefault(requestedType, empty);
             if(nonempty enhancers) {
-                log.debug(() => "Registry.wrapClassWithEnchancer: has registered enhancers for type <``clazz``>: ``enhancers``");
+                log.debug(() => "Registry.wrapClassWithEnchancer: has registered enhancers for type <``requestedType``>: ``enhancers``");
                 variable T wrapped = instance;
                 for (e in enhancers) {
                     value params = resolveConstructorParameters(e);
-                    value [instanceParam, otherParams] = splitByFilter(params, (Parameter p) => p.type.typeOf(instance));
+                    value [instanceParam, otherParams] = divideByFilter(params, (Parameter p) => p.type.typeOf(instance));
                     value instantiatedOtherParams = instantiateParameters(e, otherParams);
 
                     value fullParams = expand {
@@ -246,12 +267,12 @@ shared class RegistryImpl satisfies Registry  {
                 log.debug(() => "Registry.wrapClassWithEnchancer: instance of <``clazz``> successfully wrapped");
                 return  wrapped;
             }
+            log.debug(() => "Registry.wrapClassWithEnchancer: hasn't registered enhancers for type <``requestedType``>:");
         }
-        log.debug(() => "Registry.wrapClassWithEnchancer: hasn't registered enhancers for type <``clazz``>:");
         return instanceOrException;
     }
 
-    [{Entity*}, {Entity*}] splitByFilter<Entity>(
+    [{Entity*}, {Entity*}] divideByFilter<Entity>(
             {Entity*} coll, Boolean pred(Entity p))
             => [ coll.filter(pred), coll.filter(not(pred)) ];
 
@@ -265,6 +286,7 @@ shared class RegistryImpl satisfies Registry  {
             metaRegistry.getAppropriateClassForType(t)
         };
 
+        print("ITS- ``t``**************************************");
         value firstPotentiallyCreated =
                 appropriateClasses
                     .map(getFromCache)
@@ -372,7 +394,7 @@ shared Registry newRegistry(
         {Class<>|Object*} components = empty,
         {[Class<>, String, Anything]*} parameters = empty,
         {[Interface<>, [Class<>+]]*} enhancers = empty
-        ) => RegistryImpl {
+        ) => ImmutableRegistry {
     components = components;
     parameters = parameters;
     enhancers = enhancers;
