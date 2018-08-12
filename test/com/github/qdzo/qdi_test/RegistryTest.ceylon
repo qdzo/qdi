@@ -159,9 +159,12 @@ shared void registryShouldRegisterTypeWithInstanceInConstuctor() {
 test
 shared void registryShouldCreateInstanceWithSomeSimpleParameters() {
     value registry = newRegistry { `Person` };
-    registry.registerParameter(`Person`, "name", "Vika");
-    registry.registerParameter(`Person`, "age", 1);
-    value person = registry.getInstance(`Person`);
+    
+    value person = registry
+        .registerParameter(`Person`, "name", "Vika")
+        .registerParameter(`Person`, "age", 1)
+        .getInstance(`Person`);
+    
     assertIs(person, `Person`);
     assertEquals(person.name, "Vika");
     assertEquals(person.age, 1);
