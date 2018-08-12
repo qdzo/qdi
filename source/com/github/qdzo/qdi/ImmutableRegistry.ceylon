@@ -58,17 +58,17 @@ shared class ImmutableRegistry satisfies Registry  {
         );
         value wrapperInterfaceSet = set(wrapperInterfaces);
 
-        log.trace(() =>"Registry.checkEnhancerInterfaceCompatibility: check enhancer " +
+        log.trace(() =>"checkEnhancerInterfaceCompatibility: check enhancer " +
                 "``wrapperInfo.key`` compatibility with type <``targetInfo.key``>");
 
         // if target is subset of wrapper -> ok
         if(targetInterfaceSet.subset(wrapperInterfaceSet)) {
-            log.trace(() =>"Registry.checkEnhancerInterfaceCompatibility: check passed");
+            log.trace(() =>"checkEnhancerInterfaceCompatibility: check passed");
             return null;
         }
         value missed = targetInterfaceSet.complement(wrapperInterfaceSet);
 
-        log.trace(() =>"Registry.checkEnhancerInterfaceCompatibility: check failed, violations: ``missed``");
+        log.trace(() =>"checkEnhancerInterfaceCompatibility: check failed, violations: ``missed``");
 
         return Exception("Enchancer class <``wrapperInfo.key``> not compatible " +
                         "with origin class <``targetInfo.key``>: missed interfaces ``missed``");
@@ -81,20 +81,20 @@ shared class ImmutableRegistry satisfies Registry  {
         value targetClass->[targetExtendClasses, targetInterfaces] = targetInfo;
         value wrapperClass->[wrapperExtendClasses, wrapperInterfaces] = wrapperInfo;
         
-        log.trace(() =>"Registry.checkEnhancerConstructorCompatibility: check enhancer " +
+        log.trace(() =>"checkEnhancerConstructorCompatibility: check enhancer " +
                     "``wrapperClass`` compatibility with type <``targetClass``>");
 
         value wrapperParams = resolveConstructorParameters(wrapperClass);
 
         value isThereTargetAsParameter = any {
-            for (paramType in wrapperParams*.type)
+            for (paramType in wrapperParams*.parameterType)
             paramType in expand {{targetClass}, targetExtendClasses, targetInterfaces}
         };
         if (isThereTargetAsParameter) {
-            log.trace(() =>"Registry.checkEnhancerConstructorCompatibility: check passed");
+            log.trace(() =>"checkEnhancerConstructorCompatibility: check passed");
             return null;
         }
-        log.trace(() =>"Registry.checkEnhancerConstructorCompatibility: check failed");
+        log.trace(() =>"checkEnhancerConstructorCompatibility: check failed");
         
         return Exception("Enhancer class <``wrapperClass``> must have at least " +
                 "one constructor parameter with <``targetClass``> or some of it interfaces ``targetInterfaces``");
@@ -102,7 +102,7 @@ shared class ImmutableRegistry satisfies Registry  {
 
     "Silly check-function composition, which don't agregate Exceptions. Returns first"
     Exception? checkEnchancer<T, W>(Class<T>|Interface<T> target, Class<W> wrapper) {
-        log.debug(() =>"Registry.checkEnchancer: check enhancer ``wrapper`` compatibility with type <``target``>");
+        log.debug(() =>"checkEnchancer: check enhancer ``wrapper`` compatibility with type <``target``>");
         value targetInfo =
                 if(is Class<T> target)
                 then describeClass(target)
@@ -116,7 +116,7 @@ shared class ImmutableRegistry satisfies Registry  {
 
     "Another silly check-function composition that don't aggregate errors in nice way."
     Exception? checkEnchancers<T>(Class<T>|Interface<T> target, [Class<>+] wrappers) {
-        log.debug(() =>"Registry.checkEnchancers: check enhancers ``wrappers`` compatibility with type <``target``>");
+        log.debug(() =>"checkEnchancers: check enhancers ``wrappers`` compatibility with type <``target``>");
         return checkEnchancer(target, wrappers.first)
                else wrappers.paired.map(unflatten(checkEnchancer<Anything, Anything>)).coalesced.first;
     }
@@ -186,21 +186,29 @@ shared class ImmutableRegistry satisfies Registry  {
         this.componentsCache = componentsCache;
     }
 
-
-
-    shared actual Registry registerParameter<T>(Class<T> t, String param, Anything val) {
-        log.info("Registry.registerParameter: for type <``t``>, name: <``param``>, val: <``val else "null"``>");
+    "Add new direct parameter for given class"
+    shared actual Registry registerParameter<T>(
+            "Target class for injecing parameter"
+            Class<T> targetClass,
+            "Constructor paramerter name"
+            ParameterName param,
+            "Value to inject.
+             Values have highest priority for injection"
+            ValueToInject val) {
+        log.info("registerParameter: for type <``targetClass``>,"+
+                 " name: <``param``>, val: <``val else "null"``>");
         return withState {
             metaRegistry = metaRegistry;
-            parameters = parameters.patch(map{[t, param]-> val});
+            parameters = parameters.patch(map{[targetClass, param]-> val});
             enhancerComponents = enhancerComponents;
             componentsCache = componentsCache;
         };
     }
 
+    "Create copy of current registry and add new `class or instance` to it."
     shared actual Registry register<T>(Class<T>|Object typeOrInstance) {
         value clazz->inst = getClassInstancePair(typeOrInstance);
-        log.info("Registry.register: register " +
+        log.info("register: register " +
                     (if(exists inst) then "instantiated: <``inst``> for " else "") +
                 "type <``clazz``>");
         return withState {
@@ -211,6 +219,7 @@ shared class ImmutableRegistry satisfies Registry  {
         };
     }
 
+    // pipe function
     [Class<T>, T|Exception] tryToCreateInstanceIfNotExists<T>([Class<T>, T?] instantiated) {
         value [clazz, instance] = instantiated;
         if(exists instance) {
@@ -226,34 +235,61 @@ shared class ImmutableRegistry satisfies Registry  {
 
     T|Exception tryToCreateInstance<T>(Class<T> clazz) {
         try {
-            log.debug(() => "Registry.tryToCreateInstance: class <``clazz``>");
+            log.debug(() => "tryToCreateInstance: class <``clazz``>");
             value paramsWithTypes = resolveConstructorParameters(clazz);
-            log.trace(() => "Registry.tryToCreateInstance: default constructor for "+
+            log.trace(() => "tryToCreateInstance: default constructor for "+
                       "type <``clazz``> has ``paramsWithTypes.size`` parameters");
             value params = instantiateParameters(clazz, paramsWithTypes);
-            log.trace(() => "Registry.tryToCreateInstance: try to instantiate type <``clazz``> with params: <``params``>");
+            log.trace(() => "tryToCreateInstance: try to instantiate type <``clazz``> with params: <``params``>");
             value instance = clazz.namedApply(params);
-            log.debug(() => "Registry.tryToCreateInstance: instantiated created for type <``clazz``>");
+            log.debug(() => "tryToCreateInstance: instantiated created for type <``clazz``>");
             return instance;
         } catch(Exception th) {
             value errorMsg = "Can't create instantiated: ``th.message``";
-            log.error(() => "Registry.tryToCreateInstance: ``errorMsg``");
+            log.error(() => "tryToCreateInstance: ``errorMsg``");
             return Exception(errorMsg);
         }
     }
 
 
-     T|Exception wrapClassWithEnchancer<T>(Type<T> requestedType)([Class<T>, T|Exception] instantiated)  {
+    // pipe function
+    T|Exception wrapClassWithEnchancer<T>(Type<T> requestedType)([Class<T>, T|Exception] instantiated)  {
         value [clazz, instanceOrException] = instantiated;
         if(is T instance = instanceOrException) {
-            log.debug(() => "Registry.wrapClassWithEnchancer: instance <``instance else "null"``> created for type <``clazz``>");
+            log.debug(() => "wrapClassWithEnchancer: instance <``instance else "null"``> created for type <``clazz``>");
             value enhancers = enhancerComponents.getOrDefault(requestedType, empty);
+
             if(nonempty enhancers) {
-                log.debug(() => "Registry.wrapClassWithEnchancer: has registered enhancers for type <``requestedType``>: ``enhancers``");
-                variable T wrapped = instance;
-                for (e in enhancers) {
+                log.debug(() => "wrapClassWithEnchancer: has registered enhancers for type <``requestedType``>: ``enhancers``");
+                return wrapWithEnhancer(requestedType, enhancers, instance, clazz);
+            }
+            log.debug(() => "wrapClassWithEnchancer: hasn't registered enhancers for type <``requestedType``>:");
+        }
+        return instanceOrException;
+    }
+
+
+    // pipe function
+    T|Exception wrapClassWithEnchancer2<T>(Type<T> requestedType)([Class<T>, T] instantiated)  {
+        value [clazz, instance] = instantiated;
+        log.debug(() => "wrapClassWithEnchancer: instance <``instance else "null"``> created for type <``clazz``>");
+        value enhancers = enhancerComponents.getOrDefault(requestedType, empty);
+        if(nonempty enhancers) {
+            log.debug(() => "wrapClassWithEnchancer: has registered enhancers for type <``requestedType``>: ``enhancers``");
+            return wrapWithEnhancer(requestedType, enhancers, instance, clazz);
+        }
+        log.debug(() => "wrapClassWithEnchancer: hasn't registered enhancers for type <``requestedType``>:");
+        return instance;
+    }
+    
+    T|Exception wrapWithEnhancer<T>(Type<T> requestedType,
+            [Class<Anything,Nothing>+] enhancers,
+            T instance,
+            Class<T,Nothing> clazz) {
+        variable T wrapped = instance;
+        for (e in enhancers) {
                     value params = resolveConstructorParameters(e);
-                    value [instanceParam, otherParams] = divideByFilter(params, (Parameter p) => p.type.typeOf(instance));
+                    value [instanceParam, otherParams] = divideByFilter(params, (Parameter p) => p.parameterType.typeOf(instance));
                     value instantiatedOtherParams = instantiateParameters(e, otherParams);
 
                     value fullParams = expand {
@@ -261,32 +297,30 @@ shared class ImmutableRegistry satisfies Registry  {
                         instanceParam.map(bindParameterWithValue(wrapped))
                     };
                     assert(is T newWrapped = e.namedApply(fullParams));
-                    log.trace(() => "Registry.wrapClassWithEnchancer: create wrapper <``e``> for type <``clazz``>");
+                    log.trace(() => "wrapClassWithEnchancer: create wrapper <``e``> for type <``clazz``>");
                     wrapped = newWrapped;
                 }
-                log.debug(() => "Registry.wrapClassWithEnchancer: instance of <``clazz``> successfully wrapped");
-                return  wrapped;
-            }
-            log.debug(() => "Registry.wrapClassWithEnchancer: hasn't registered enhancers for type <``requestedType``>:");
-        }
-        return instanceOrException;
+        log.debug(() => "wrapClassWithEnchancer: instance of <``clazz``> successfully wrapped");
+        return  wrapped;
     }
 
+    "split into 2 collections by a predicate"
     [{Entity*}, {Entity*}] divideByFilter<Entity>(
             {Entity*} coll, Boolean pred(Entity p))
             => [ coll.filter(pred), coll.filter(not(pred)) ];
 
     String->T bindParameterWithValue<T>(T val)(Parameter param)
-            => param.name->val;
+            => param.parameterName->val;
 
+    "Main high-level function"
     T? tryFindAndGetApproproateInstance<T>(Type<T> t) {
-        log.debug(() => "Registry.tryFindAndGetApproproateInstance: for type <``t``> ");
+        log.debug(() => "tryFindAndGetApproproateInstance: for type <``t``> ");
+        
         value appropriateClasses = expand {
             [if(is Class<T> t, !t.declaration.abstract) t],
             metaRegistry.getAppropriateClassForType(t)
         };
 
-        print("ITS- ``t``**************************************");
         value firstPotentiallyCreated =
                 appropriateClasses
                     .map(getFromCache)
@@ -298,7 +332,7 @@ shared class ImmutableRegistry satisfies Registry  {
         if(is T i = firstPotentiallyCreated) {
             return i;
         }
-        log.warn(() => "Registry.tryFindAndGetApproproateInstance: can't get instantiated: for type ``t``");
+        log.warn(() => "tryFindAndGetApproproateInstance: can't get instantiated: for type ``t``");
         return null;
     }
 
@@ -311,25 +345,25 @@ shared class ImmutableRegistry satisfies Registry  {
     }
 
     [Class<T>, T?] getFromCache<T>(Class<T> clazz) {
-        log.debug(() => "Registry.getFromCache: called with class <``clazz``>");
+        log.debug(() => "getFromCache: called with class <``clazz``>");
         if (exists instance = componentsCache[clazz]) {
-            log.debug(() => "Registry.getFromCache: <``clazz``> has cached value");
+            log.debug(() => "getFromCache: <``clazz``> has cached value");
             return [clazz, cast<T>(instance)];
         }
         else {
-            log.debug(() => "Registry.getFromCache: <``clazz``> hasn't cached value");
+            log.debug(() => "getFromCache: <``clazz``> hasn't cached value");
             return [clazz, null];
         }
     }
 
 
-
+    // pipe function
     [Class<T>, T|Exception] saveToCache<T>([Class<T>, T|Exception] instantiated) {
-        log.debug(() => "Registry.saveToCache: called with params <``instantiated``>");
+        log.debug(() => "saveToCache: called with params <``instantiated``>");
         value [clazz, instance] = instantiated;
         if(!is Exception instance,
            !componentsCache[clazz] exists) {
-            log.debug(() => "Registry.saveToCache: there are no cached value for <``instantiated``>. cache it!");
+            log.debug(() => "saveToCache: there are no cached value for <``instantiated``>. cache it!");
             componentsCache = componentsCache.patch(map {clazz -> instance});
         }
         return instantiated;
@@ -340,8 +374,10 @@ shared class ImmutableRegistry satisfies Registry  {
 //    - [[UnionType]]
 //    - [[IntersectionType]]
 
+    "Try to create instance for given type (class/interface/union/intersection)"
+    throws(`class Exception`, "When can't create instance.")
     shared actual T getInstance<T>(Type<T> t) {
-        log.info(() => "Registry.getInstance: for type <``t``>");
+        log.info(() => "getInstance: for type <``t``>");
         if(exists i = tryFindAndGetApproproateInstance(t)) {
             return i;
         }
@@ -350,37 +386,53 @@ shared class ImmutableRegistry satisfies Registry  {
 
     [<String->Anything>*]
     instantiateParameters<T>(Class<T> t, {Parameter*} paramsTypes) {
-        log.debug(() => "Registry.instantiateParameters: try to instantiate params: ``paramsTypes``");
-        return paramsTypes.map(instantiateParameter(t)).coalesced.sequence();
+        log.debug(() => "instantiateParameters: try to instantiate params: ``paramsTypes``");
+        return paramsTypes
+            .map(getRegisteredParameter)
+            .map(instantiateParameterIfNotExists)
+            .coalesced.sequence();
     }
 
-    <String->Anything>? instantiateParameter<T>(Class<T> t)(Parameter parameter) {
-        if(exists paramVal = parameters[[t, parameter.name]]) {
-            log.trace(() => "Registry.instantiateParameter: found registered parameter for : [``t``,``parameter.name``]");
-            return parameter.name -> paramVal;
-        } else {
-            log.trace(() => "Registry.instantiateParameter: try to initiate parameter <``parameter.name``> needed for class <``t``>");
-            value closeType = parameter.type;
-            value depInstance = tryFindAndGetApproproateInstance(closeType);
-            if(exists depInstance) {
-                log.trace(() => "Registry.instantiateParameter: parameter <``parameter.name``> initialized");
-                return parameter.name -> depInstance;
-            }
-            log.trace(() => "Registry.instantiateParameter: parameter <``parameter.name``>(``t``) NOT initialized.");
-            if(parameter.defaulted) {
-                log.trace(() => "Registry.instantiateParameter: parameter <``parameter.name``>(``t``) has default value in class.");
-                return null;
-            }
-            throw Exception("Unresolved dependency <``parameter.name``> (``parameter.type``) for class <``t``>");
+    [Parameter, Anything] getRegisteredParameter(Parameter p) {
+        if(exists paramVal = parameters[[p.targetClass, p.parameterName]]) {
+            log.trace(() => "getRegisteredParameter: found registered parameter for : [``p.targetClass``,``p.parameterName``]");
+            return [p, paramVal];
         }
+        log.trace(() => "getRegisteredParameter: there are no registered parameter for : [``p.targetClass``,``p.parameterName``]");
+        return [p, null];
+    }
+
+    // pipe function
+    <String->Anything>? instantiateParameterIfNotExists([Parameter, Anything] parameterValuePair) {
+        value [parameter, val] = parameterValuePair;
+        if(exists val) {
+            return parameter.parameterName -> val;
+        }
+        return instantiateParameter(parameter);
+    }
+
+    <String->Anything>? instantiateParameter(Parameter p) {
+        log.trace(() => "instantiateParameter: try to instantiate parameter <``p.parameterName``> needed for class <``p.targetClass``>");
+        value depInstance = tryFindAndGetApproproateInstance(p.parameterType);
+        if(exists depInstance) {
+            log.trace(() => "instantiateParameter: parameter <``p.parameterName``> initialized");
+            return p.parameterName-> depInstance;
+        }
+        log.trace(() => "instantiateParameter: parameter <``p.parameterName``>(``p.targetClass``) NOT initialized.");
+        if(p.defaulted) {
+            log.trace(() => "instantiateParameter: parameter <``p.parameterName``>(``p.targetClass``) has default value in class.");
+            return null;
+        }
+        throw Exception("Unresolved dependency <``p.parameterName``> " +
+        "(``p.parameterType``) for class <``p.targetClass``>");
     }
 
     shared actual Registry registerEnhancer<T>(Interface<T> target, [Class<Anything,Nothing>+] wrappers) {
-        log.info("Registry.registerEnchancer: try register enhancers ``wrappers`` for type <``target``>");
+        log.info("registerEnchancer: try register enhancers ``wrappers`` for type <``target``>");
         if(is Exception error = checkEnchancers(target, wrappers)) {
             throw error;
         }
-        log.info("Registry.registerEnchancer: register enhancers ``wrappers`` successfully");
+        log.info("registerEnchancer: register enhancers ``wrappers`` successfully");
         return withState {
             metaRegistry = metaRegistry;
             parameters = parameters;

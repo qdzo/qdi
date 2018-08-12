@@ -23,25 +23,26 @@ import ceylon.logging {
 Logger log = logger(`module`);
 
 shared class Parameter(
-        shared String name,
-        shared Type<> type,
+        shared Class<> targetClass,
+        shared String parameterName,
+        shared Type<> parameterType,
         shared Boolean defaulted
         )  {
-    string => "Parameter(name=``name``, type=``type``, defaulted=``defaulted``)";
+    string => "Parameter(targetClass=``targetClass``, name=``parameterName``, type=``parameterType``, defaulted=``defaulted``)";
 }
 
 shared {Parameter*} resolveConstructorParameters<T>(Class<T> t) {
-    log.debug(() => "Registry.constructParameters: parameters for class <``t``>");
+    log.debug(() => "constructParameters: parameters for class <``t``>");
 
     assert(exists parameterDeclarations
             = t.defaultConstructor?.declaration?.parameterDeclarations);
 
     value parameters =  parameterDeclarations.collect((e) {
-        log.trace(() => "Registry.constructParameters: parameter-declaration: <``e.openType``>");
+        log.trace(() => "constructParameters: parameter-declaration: <``e.openType``>");
         value closedType = resolveOpenType(t, e.openType);
-        return Parameter(e.name, closedType, e.defaulted);
+        return Parameter(t, e.name, closedType, e.defaulted);
     });
-    log.debug(() => "Registry.constructParameters: constructed parameters: <``parameters``>");
+    log.debug(() => "constructParameters: constructed parameters: <``parameters``>");
     return parameters;
 }
 
