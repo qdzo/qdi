@@ -91,12 +91,12 @@ shared Type<> resolveOpenType<T>(Class<T> parentClass, OpenType openType) {
 shared Type<>[] resolveOpenTypes(Class<> parentClass, List<OpenType> openTypes)
         => [for (openType in openTypes) resolveOpenType(parentClass, openType)];
 
-shared Class<T> ->[[Class<Anything>*], [Interface<Anything>*]]
+shared Class<T> ->[Set<Class<Anything>>, Set<Interface<Anything>>]
 describeClass<T>(Class<T> clazz) {
 
     value extendedClazzez = getClassHierarchyExceptBasicClasses(clazz);
     value interfaces =  getInterfaceHierarhyExeptBasicTypes(clazz);
-    return clazz -> [extendedClazzez, interfaces];
+    return clazz -> [set(extendedClazzez), set(interfaces)];
 }
 
 shared [Class<>+] basicTypes = [`String`, `Integer`, `Float`, `Boolean`, `Character`, `Basic`, `Object`, `Anything`];

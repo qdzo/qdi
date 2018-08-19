@@ -19,40 +19,51 @@ import com.github.qdzo.qdi {
 shared class MetaRegistry {
 
     "Class -> ['extend classes', 'satisfied interfaces']"
-    Map<Class<>, [[Class<>*], [Interface<>*]]> components;
+    Map<Class<>, [Set<Class<>>, Set<Interface<>>]> components;
 
-    "Dictionary of 'ParentClass -> ChildClass'.
-     WARN: There are maybe collisions."
-    Map<Class<>, Class<>> extendComponents;
+    "Dictionary of 'ParentClass -> ChildClass'."
+    Map<Class<>, Set<Class<>>> extendComponents;
 
-    "Inteface dictionary: 'Interface -> SatisfiedClass'.
-     WARN: There are maybe collisions."
-    Map<Interface<>, Class<>> interfaceComponents;
+    "Inteface dictionary: 'Interface -> SatisfiedClass'."
+    Map<Interface<>, Set<Class<>>> interfaceComponents;
 
+    "Create new MetaRegistry from given classes"
     shared new({Class<Anything>*} components = empty) {
 
         value described = components.collect(describeClass);
 
-        this.components = map (described);
-
-        this.extendComponents = map {
+        this.components = map(described);
+        
+        value parentChildEntries = {
             for (clazz-> [extClazzez, __] in described)
             for(extClazz in extClazzez)
             extClazz -> clazz
         };
+        
+        value extendComponents = parentChildEntries
+            .group((parent->child) => parent)
+            .map((parent->parentChildEntries) => parent -> set(parentChildEntries*.item));
 
-        this.interfaceComponents = map {
+        this.extendComponents = map(extendComponents);
+
+        value interfaceClassEntries = {
             for (clazz->[ __, ifaces] in described)
             for (iface in ifaces)
             iface -> clazz
         };
+
+        value interfaceComponents = interfaceClassEntries
+            .group((iface->clazz) => iface)
+            .map((iface->ifaceClass) => iface -> set(ifaceClass*.item));
+
+        this.interfaceComponents = map(interfaceComponents);
     }
 
     "Internal constructor, need for self-copying"
     new withState (
-            Map<Class<>, [[Class<>*], [Interface<>*]]> components,
-            Map<Class<>, Class<>> extendComponents,
-            Map<Interface<>, Class<>> interfaceComponents
+            Map<Class<>, [Set<Class<>>, Set<Interface<>>]> components,
+            Map<Class<>, Set<Class<>>> extendComponents,
+            Map<Interface<>, Set<Class<>>> interfaceComponents
             ) {
         this.components = components;
         this.extendComponents = extendComponents;
@@ -62,21 +73,21 @@ shared class MetaRegistry {
 //        shared Boolean isRegistered<T>(Class<T> clazz) => componentsCache[clazz] exists;
     
     shared [Interface<>*] getClassInterfaces<T>(Class<T> clazz)
-            => if(exists [_, ifaces] = components[clazz]) then ifaces else [];
+            => if(exists [_, ifaces] = components[clazz]) then ifaces.sequence() else [];
 
     shared [Class<>*] getClassHierarchy<T>(Class<T> clazz)
-            => if(exists [classes,_] = components[clazz]) then classes else [];
+            => if(exists [classes,_] = components[clazz]) then classes.sequence() else [];
 
-    shared [[Class<>*], [Interface<>*]] getClassInfo<T>(Class<T> clazz)
-            =>  components[clazz] else [empty, empty];
+    shared [Set<Class<>>, Set<Interface<>>] getClassInfo<T>(Class<T> clazz)
+            =>  components[clazz] else [emptySet, emptySet];
 
     shared [Class<>*] getAppropriateClassForType<T>(Type<T> t) {
 
         if (is Interface<T> t) {
             log.debug(() => "getAppropriateClassForType: <``t``> is a Interface");
-            if(is Class<T> satisfiedClass = interfaceComponents.get(t)) {
+            if(exists satisfiedClass = interfaceComponents.get(t)) {
                 log.debug(() => "getAppropriateClassForType: has registered class <``satisfiedClass``> for interface <``t``>");
-                return [satisfiedClass];
+                return satisfiedClass.sequence();
             }
             log.warn(() => "getAppropriateClassForType: Haven't registered types for interface: <``t``>");
             return empty;
@@ -84,9 +95,9 @@ shared class MetaRegistry {
 
         else if(is Class<T> t) {
             log.debug(() => "getAppropriateClassForType: <``t``> is a Class");
-            if(is Class<T> extendedClass = extendComponents.get(t)) {
+            if(exists extendedClass = extendComponents.get(t)) {
                 log.debug(() => "getAppropriateClassForType: has registered type for class <``t``>");
-                return [extendedClass];
+                return extendedClass.sequence();
             }
             log.warn(() => "getAppropriateClassForType: Haven't registered types for class: <``t``>");
             return empty;
@@ -100,14 +111,17 @@ shared class MetaRegistry {
         else if(is IntersectionType<T> t) {
             log.debug(() => "getAppropriateClassForType: <``t``> is an IntersectionType");
 
+            value intersectedTypesSet = set(t.satisfiedTypes);
+            
             value intersected = interfaceComponents
-                .filterKeys((iface) => iface in t.satisfiedTypes)
-                .inverse()
-                .find((clazz -> ifaces) => ifaces.every((iface) => iface in t.satisfiedTypes));
+                .filterKeys(intersectedTypesSet.contains)
+                .flatMap((iface -> clazzez) => { for (clazz in clazzez) clazz -> iface })
+                .group(Entry.key)
+                .map((clazz -> clazzIfaces) => clazz -> clazzIfaces*.item)
+                .select((clazz -> ifaces) => set(ifaces).superset(intersectedTypesSet));
 
-            if(exists intersected,
-                is Class<T> cl = intersected.key) {
-                return [cl];
+            if(nonempty intersected) {
+                return intersected*.key;
             }
             log.warn(() => "getAppropriateClassForType: Haven't registered types for interface intersection: <``t``>");
             return empty;
@@ -120,17 +134,25 @@ shared class MetaRegistry {
     shared MetaRegistry registerMetaInfoForType<T>(Class<T> t) {
         log.info("describeAndRegisterType: register type <``t``>");
         value clazz->[extClazzez, ifaces] = describeClass(t);
+
         return withState {
-            components = components.patch(map {clazz -> [extClazzez, ifaces]});
-            extendComponents = extendComponents.patch(map {
-                for (extClazz in extClazzez) extClazz -> clazz
+            components = components.patch(map {clazz -> [extClazzez, ifaces]}); // rewrite clazz-info without risk.
+            extendComponents = extendComponents.patch( map {
+                for (extClazz in extClazzez)
+                if(exists clazzez = extendComponents[extClazz])
+                then extClazz -> clazzez.union(set{clazz})
+                else extClazz -> set{clazz}
             });
-            interfaceComponents = interfaceComponents.patch(map {
-                for (iface in ifaces) iface -> clazz
+            interfaceComponents = interfaceComponents.patch( map {
+                for (iface in ifaces)
+                if(exists clazzez = interfaceComponents[iface])
+                then iface -> clazzez.union(set{clazz})
+                else iface -> set{clazz}
             });
         };
     }
 
+    "Helper function for debugging"
     shared void inspect() {
         print("---------------- META-REGISTRY INSPECTION -----------------");
         printAll({

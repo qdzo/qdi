@@ -353,16 +353,16 @@ shared Registry newRegistry(
 };
 
 Exception? checkEnhancerInterfaceCompatibility<Target, Wrapper>(
-        Type<Target>->[Class<>[], Interface<>[]] targetInfo,
-        Class<Wrapper>->[Class<>[], Interface<>[]] wrapperInfo) {
+        Type<Target>->[Set<Class<>>, Set<Interface<>>] targetInfo,
+        Class<Wrapper>->[Set<Class<>>, Set<Interface<>>] wrapperInfo) {
 
     value targetClassOrIface->[targetExtendClasses, targetInterfaces] = targetInfo;
     value wrapperClass->[wrapperExtendClasses, wrapperInterfaces] = wrapperInfo;
 
-    value targetInterfaceSet = set (
-        [if(is Interface<> iface = targetClassOrIface) iface]
-            .append(targetInterfaces)
-    );
+    value targetInterfaceSet = set {
+        if(is Interface<> iface = targetClassOrIface) iface
+    }.union(targetInterfaces);
+    
     value wrapperInterfaceSet = set(wrapperInterfaces);
 
     log.trace(() =>"checkEnhancerInterfaceCompatibility: check enhancer " +
@@ -383,8 +383,8 @@ Exception? checkEnhancerInterfaceCompatibility<Target, Wrapper>(
 
 "Checks if enhancer takes at least one parameter with the same interface that it wraps."
 Exception? checkEnhancerConstructorCompatibility<Target, Wrapper>(
-        Type<Target>->[Class<>[], Interface<>[]] targetInfo,
-        Class<Wrapper>->[Class<>[], Interface<>[]] wrapperInfo) {
+        Type<Target>->[Set<Class<>>, Set<Interface<>>] targetInfo,
+        Class<Wrapper>->[Set<Class<>>, Set<Interface<>>] wrapperInfo) {
     value targetClass->[targetExtendClasses, targetInterfaces] = targetInfo;
     value wrapperClass->[wrapperExtendClasses, wrapperInterfaces] = wrapperInfo;
 
@@ -413,7 +413,7 @@ Exception? checkEnchancer<T, W>(Class<T>|Interface<T> target, Class<W> wrapper) 
     value targetInfo =
             if(is Class<T> target)
             then describeClass(target)
-            else target->[[], getInterfaceHierarhy(target)];
+            else target->[emptySet, set(getInterfaceHierarhy(target))];
 
     value wrapperInfo = describeClass(wrapper);
 
