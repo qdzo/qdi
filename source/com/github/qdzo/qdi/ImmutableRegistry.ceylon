@@ -45,82 +45,6 @@ shared class ImmutableRegistry satisfies Registry  {
 
     late variable Map<Class<>, Anything> componentsCache;
 
-    Exception? checkEnhancerInterfaceCompatibility<Target, Wrapper>(
-            Type<Target>->[Class<>[], Interface<>[]] targetInfo,
-            Class<Wrapper>->[Class<>[], Interface<>[]] wrapperInfo) {
-
-        value targetClassOrIface->[targetExtendClasses, targetInterfaces] = targetInfo;
-        value wrapperClass->[wrapperExtendClasses, wrapperInterfaces] = wrapperInfo;
-
-        value targetInterfaceSet =  set (
-            [if(is Interface<> iface = targetClassOrIface) iface]
-                .append(targetInterfaces)
-        );
-        value wrapperInterfaceSet = set(wrapperInterfaces);
-
-        log.trace(() =>"checkEnhancerInterfaceCompatibility: check enhancer " +
-                "``wrapperInfo.key`` compatibility with type <``targetInfo.key``>");
-
-        // if target is subset of wrapper -> ok
-        if(targetInterfaceSet.subset(wrapperInterfaceSet)) {
-            log.trace(() =>"checkEnhancerInterfaceCompatibility: check passed");
-            return null;
-        }
-        value missed = targetInterfaceSet.complement(wrapperInterfaceSet);
-
-        log.trace(() =>"checkEnhancerInterfaceCompatibility: check failed, violations: ``missed``");
-
-        return Exception("Enchancer class <``wrapperInfo.key``> not compatible " +
-                        "with origin class <``targetInfo.key``>: missed interfaces ``missed``");
-    }
-
-    "Checks if enhancer takes at least one parameter with the same interface that it wraps."
-    Exception? checkEnhancerConstructorCompatibility<Target, Wrapper>(
-            Type<Target>->[Class<>[], Interface<>[]] targetInfo,
-            Class<Wrapper>->[Class<>[], Interface<>[]] wrapperInfo) {
-        value targetClass->[targetExtendClasses, targetInterfaces] = targetInfo;
-        value wrapperClass->[wrapperExtendClasses, wrapperInterfaces] = wrapperInfo;
-        
-        log.trace(() =>"checkEnhancerConstructorCompatibility: check enhancer " +
-                    "``wrapperClass`` compatibility with type <``targetClass``>");
-
-        value wrapperParams = resolveConstructorParameters(wrapperClass);
-
-        value isThereTargetAsParameter = any {
-            for (paramType in wrapperParams*.parameterType)
-            paramType in expand {{targetClass}, targetExtendClasses, targetInterfaces}
-        };
-        if (isThereTargetAsParameter) {
-            log.trace(() =>"checkEnhancerConstructorCompatibility: check passed");
-            return null;
-        }
-        log.trace(() =>"checkEnhancerConstructorCompatibility: check failed");
-        
-        return Exception("Enhancer class <``wrapperClass``> must have at least " +
-                "one constructor parameter with <``targetClass``> or some of it interfaces ``targetInterfaces``");
-    }
-
-    "Silly check-function composition, which don't agregate Exceptions. Returns first"
-    Exception? checkEnchancer<T, W>(Class<T>|Interface<T> target, Class<W> wrapper) {
-        log.debug(() =>"checkEnchancer: check enhancer ``wrapper`` compatibility with type <``target``>");
-        value targetInfo =
-                if(is Class<T> target)
-                then describeClass(target)
-                else target->[[], getInterfaceHierarhy(target)];
-        
-        value wrapperInfo = describeClass(wrapper);
-
-        return checkEnhancerInterfaceCompatibility(targetInfo, wrapperInfo)
-               else checkEnhancerConstructorCompatibility(targetInfo, wrapperInfo);
-    }
-
-    "Another silly check-function composition that don't aggregate errors in nice way."
-    Exception? checkEnchancers<T>(Class<T>|Interface<T> target, [Class<>+] wrappers) {
-        log.debug(() =>"checkEnchancers: check enhancers ``wrappers`` compatibility with type <``target``>");
-        return checkEnchancer(target, wrappers.first)
-               else wrappers.paired.map(unflatten(checkEnchancer<Anything, Anything>)).coalesced.first;
-    }
-
 
     shared void inspect() {
         print("---------------- REGISTRY INSPECTION -----------------");
@@ -129,19 +53,9 @@ shared class ImmutableRegistry satisfies Registry  {
             "componentsCache size: ``componentsCache.size``",
             "enhancerComponents size: ``enhancerComponents.size``"
         }, "\n");
-        if (!parameters.empty) {
-            print("-------------------- parameters ----------------------");
-            printAll(parameters, "\n");
-        }
-        if (!componentsCache.empty) {
-            print("-------------------- componentsCache ----------------------");
-            printAll(componentsCache, "\n");
-        }
-        if (!enhancerComponents.empty) {
-            print("-------------------- enhancerComponents ----------------------");
-            printAll(enhancerComponents, "\n");
-        }
-        print("------------------------------------------------------");
+        printSection("parameters", parameters);
+        printSection("componentsCache", componentsCache);
+        printSection("enhancerComponents", enhancerComponents);
         metaRegistry.inspect();
     }
 
@@ -173,7 +87,7 @@ shared class ImmutableRegistry satisfies Registry  {
         };
     }
 
-    "Internal constructor, need for sefl-copying"
+    "Internal constructor, need for self-copying"
     new withState(
             MetaRegistry metaRegistry,
             Map<[Class<>, String], Anything> parameters,
@@ -216,6 +130,20 @@ shared class ImmutableRegistry satisfies Registry  {
             parameters = parameters;
             enhancerComponents = enhancerComponents;
             componentsCache = componentsCache.patch(map{clazz -> inst});
+        };
+    }
+
+    shared actual Registry registerEnhancer<T>(Interface<T> target, [Class<Anything,Nothing>+] wrappers) {
+        log.info("registerEnchancer: try register enhancers ``wrappers`` for type <``target``>");
+        if(is Exception error = checkEnchancers(target, wrappers)) {
+            throw error;
+        }
+        log.info("registerEnchancer: register enhancers ``wrappers`` successfully");
+        return withState {
+            metaRegistry = metaRegistry;
+            parameters = parameters;
+            enhancerComponents = enhancerComponents.patch(map{target -> wrappers});
+            componentsCache = componentsCache;
         };
     }
 
@@ -289,7 +217,8 @@ shared class ImmutableRegistry satisfies Registry  {
         variable T wrapped = instance;
         for (e in enhancers) {
                     value params = resolveConstructorParameters(e);
-                    value [instanceParam, otherParams] = divideByFilter(params, (Parameter p) => p.parameterType.typeOf(instance));
+                    value [instanceParam, otherParams]
+                            = divideByFilter(params, (Parameter p) => p.parameterType.typeOf(instance));
                     value instantiatedOtherParams = instantiateParameters(e, otherParams);
 
                     value fullParams = expand {
@@ -303,14 +232,6 @@ shared class ImmutableRegistry satisfies Registry  {
         log.debug(() => "wrapClassWithEnchancer: instance of <``clazz``> successfully wrapped");
         return  wrapped;
     }
-
-    "split into 2 collections by a predicate"
-    [{Entity*}, {Entity*}] divideByFilter<Entity>(
-            {Entity*} coll, Boolean pred(Entity p))
-            => [ coll.filter(pred), coll.filter(not(pred)) ];
-
-    String->T bindParameterWithValue<T>(T val)(Parameter param)
-            => param.parameterName->val;
 
     "Main high-level function"
     T? tryFindAndGetApproproateInstance<T>(Type<T> t) {
@@ -336,13 +257,6 @@ shared class ImmutableRegistry satisfies Registry  {
         return null;
     }
 
-    Boolean  notException(Anything instanceOrException)
-            => !instanceOrException is Exception;
-
-    T cast<T>(Anything val){
-        assert(is T val);
-        return val;
-    }
 
     [Class<T>, T?] getFromCache<T>(Class<T> clazz) {
         log.debug(() => "getFromCache: called with class <``clazz``>");
@@ -426,20 +340,6 @@ shared class ImmutableRegistry satisfies Registry  {
         throw Exception("Unresolved dependency <``p.parameterName``> " +
         "(``p.parameterType``) for class <``p.targetClass``>");
     }
-
-    shared actual Registry registerEnhancer<T>(Interface<T> target, [Class<Anything,Nothing>+] wrappers) {
-        log.info("registerEnchancer: try register enhancers ``wrappers`` for type <``target``>");
-        if(is Exception error = checkEnchancers(target, wrappers)) {
-            throw error;
-        }
-        log.info("registerEnchancer: register enhancers ``wrappers`` successfully");
-        return withState {
-            metaRegistry = metaRegistry;
-            parameters = parameters;
-            enhancerComponents = enhancerComponents.patch(map{target -> wrappers});
-            componentsCache = componentsCache;
-        };
-    }
 }
 
 shared Registry newRegistry(
@@ -451,3 +351,103 @@ shared Registry newRegistry(
     parameters = parameters;
     enhancers = enhancers;
 };
+
+Exception? checkEnhancerInterfaceCompatibility<Target, Wrapper>(
+        Type<Target>->[Class<>[], Interface<>[]] targetInfo,
+        Class<Wrapper>->[Class<>[], Interface<>[]] wrapperInfo) {
+
+    value targetClassOrIface->[targetExtendClasses, targetInterfaces] = targetInfo;
+    value wrapperClass->[wrapperExtendClasses, wrapperInterfaces] = wrapperInfo;
+
+    value targetInterfaceSet = set (
+        [if(is Interface<> iface = targetClassOrIface) iface]
+            .append(targetInterfaces)
+    );
+    value wrapperInterfaceSet = set(wrapperInterfaces);
+
+    log.trace(() =>"checkEnhancerInterfaceCompatibility: check enhancer " +
+    "``wrapperInfo.key`` compatibility with type <``targetInfo.key``>");
+
+    // if target is subset of wrapper -> ok
+    if(targetInterfaceSet.subset(wrapperInterfaceSet)) {
+        log.trace(() =>"checkEnhancerInterfaceCompatibility: check passed");
+        return null;
+    }
+    value missed = targetInterfaceSet.complement(wrapperInterfaceSet);
+
+    log.trace(() =>"checkEnhancerInterfaceCompatibility: check failed, violations: ``missed``");
+
+    return Exception("Enchancer class <``wrapperInfo.key``> not compatible " +
+    "with origin class <``targetInfo.key``>: missed interfaces ``missed``");
+}
+
+"Checks if enhancer takes at least one parameter with the same interface that it wraps."
+Exception? checkEnhancerConstructorCompatibility<Target, Wrapper>(
+        Type<Target>->[Class<>[], Interface<>[]] targetInfo,
+        Class<Wrapper>->[Class<>[], Interface<>[]] wrapperInfo) {
+    value targetClass->[targetExtendClasses, targetInterfaces] = targetInfo;
+    value wrapperClass->[wrapperExtendClasses, wrapperInterfaces] = wrapperInfo;
+
+    log.trace(() =>"checkEnhancerConstructorCompatibility: check enhancer " +
+    "``wrapperClass`` compatibility with type <``targetClass``>");
+
+    value wrapperParams = resolveConstructorParameters(wrapperClass);
+
+    value isThereTargetAsParameter = any {
+        for (paramType in wrapperParams*.parameterType)
+        paramType in expand {{targetClass}, targetExtendClasses, targetInterfaces}
+    };
+    if (isThereTargetAsParameter) {
+        log.trace(() =>"checkEnhancerConstructorCompatibility: check passed");
+        return null;
+    }
+    log.trace(() =>"checkEnhancerConstructorCompatibility: check failed");
+
+    return Exception("Enhancer class <``wrapperClass``> must have at least " +
+    "one constructor parameter with <``targetClass``> or some of it interfaces ``targetInterfaces``");
+}
+
+"Silly check-function composition, which don't agregate Exceptions. Returns first"
+Exception? checkEnchancer<T, W>(Class<T>|Interface<T> target, Class<W> wrapper) {
+    log.debug(() =>"checkEnchancer: check enhancer ``wrapper`` compatibility with type <``target``>");
+    value targetInfo =
+            if(is Class<T> target)
+            then describeClass(target)
+            else target->[[], getInterfaceHierarhy(target)];
+
+    value wrapperInfo = describeClass(wrapper);
+
+    return checkEnhancerInterfaceCompatibility(targetInfo, wrapperInfo)
+    else checkEnhancerConstructorCompatibility(targetInfo, wrapperInfo);
+}
+
+"Another silly check-function composition that don't aggregate errors in nice way."
+Exception? checkEnchancers<T>(Class<T>|Interface<T> target, [Class<>+] wrappers) {
+    log.debug(() =>"checkEnchancers: check enhancers ``wrappers`` compatibility with type <``target``>");
+    return checkEnchancer(target, wrappers.first)
+    else wrappers.paired.map(unflatten(checkEnchancer<Anything, Anything>)).coalesced.first;
+}
+
+"split into 2 collections by a predicate"
+[{Entity*}, {Entity*}] divideByFilter<Entity>(
+        {Entity*} coll, Boolean pred(Entity p))
+        => [ coll.filter(pred), coll.filter(not(pred)) ];
+
+String->T bindParameterWithValue<T>(T val)(Parameter param)
+        => param.parameterName->val;
+
+T cast<T>(Anything val){
+    assert(is T val);
+    return val;
+}
+
+Boolean  notException(Anything instanceOrException)
+        => !instanceOrException is Exception;
+
+"Helper function for state inspection"
+shared void printSection<T>(String sectionName, {T*} coll) {
+    if(!coll.empty) {
+        print("-------------------- ``sectionName`` ----------------------");
+        printAll(coll, "\n");
+    }
+}

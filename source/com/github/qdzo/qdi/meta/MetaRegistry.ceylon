@@ -5,13 +5,28 @@ import ceylon.language.meta.model {
     Interface,
     Class
 }
+import com.github.qdzo.qdi {
+    printSection
+}
 
+"Class meta-information store.
+
+ Gets classes and gather information from them:
+ - satisfied interfaces
+ - full class hierarchy (except Basic types)
+ 
+ Used as requirenemts(class) resolution engine."
 shared class MetaRegistry {
 
+    "Class -> ['extend classes', 'satisfied interfaces']"
     Map<Class<>, [[Class<>*], [Interface<>*]]> components;
 
+    "Dictionary of 'ParentClass -> ChildClass'.
+     WARN: There are maybe collisions."
     Map<Class<>, Class<>> extendComponents;
 
+    "Inteface dictionary: 'Interface -> SatisfiedClass'.
+     WARN: There are maybe collisions."
     Map<Interface<>, Class<>> interfaceComponents;
 
     shared new({Class<Anything>*} components = empty) {
@@ -33,6 +48,7 @@ shared class MetaRegistry {
         };
     }
 
+    "Internal constructor, need for self-copying"
     new withState (
             Map<Class<>, [[Class<>*], [Interface<>*]]> components,
             Map<Class<>, Class<>> extendComponents,
@@ -48,7 +64,7 @@ shared class MetaRegistry {
     shared [Interface<>*] getClassInterfaces<T>(Class<T> clazz)
             => if(exists [_, ifaces] = components[clazz]) then ifaces else [];
 
-    shared [Class<>*] getClassHierarty<T>(Class<T> clazz)
+    shared [Class<>*] getClassHierarchy<T>(Class<T> clazz)
             => if(exists [classes,_] = components[clazz]) then classes else [];
 
     shared [[Class<>*], [Interface<>*]] getClassInfo<T>(Class<T> clazz)
@@ -57,32 +73,32 @@ shared class MetaRegistry {
     shared [Class<>*] getAppropriateClassForType<T>(Type<T> t) {
 
         if (is Interface<T> t) {
-            log.debug(() => "MetaRegistry.getAppropriateClassForType: <``t``> is a Interface");
+            log.debug(() => "getAppropriateClassForType: <``t``> is a Interface");
             if(is Class<T> satisfiedClass = interfaceComponents.get(t)) {
-                log.debug(() => "MetaRegistry.getAppropriateClassForType: has registered class <``satisfiedClass``> for interface <``t``>");
+                log.debug(() => "getAppropriateClassForType: has registered class <``satisfiedClass``> for interface <``t``>");
                 return [satisfiedClass];
             }
-            log.warn(() => "MetaRegistry.getAppropriateClassForType: Haven't registered types for interface: <``t``>");
+            log.warn(() => "getAppropriateClassForType: Haven't registered types for interface: <``t``>");
             return empty;
         }
 
         else if(is Class<T> t) {
-            log.debug(() => "MetaRegistry.getAppropriateClassForType: <``t``> is a Class");
+            log.debug(() => "getAppropriateClassForType: <``t``> is a Class");
             if(is Class<T> extendedClass = extendComponents.get(t)) {
-                log.debug(() => "MetaRegistry.getAppropriateClassForType: has registered type for class <``t``>");
+                log.debug(() => "getAppropriateClassForType: has registered type for class <``t``>");
                 return [extendedClass];
             }
-            log.warn(() => "MetaRegistry.getAppropriateClassForType: Haven't registered types for class: <``t``>");
+            log.warn(() => "getAppropriateClassForType: Haven't registered types for class: <``t``>");
             return empty;
         }
 
         else if(is UnionType<T> t) {
-            log.debug(() => "MetaRegistry.getAppropriateClassForType: <``t``> is an UnionType");
+            log.debug(() => "getAppropriateClassForType: <``t``> is an UnionType");
             return concatenate(t.caseTypes.narrow<Class<>>(), t.caseTypes.flatMap(getAppropriateClassForType));
         }
 
         else if(is IntersectionType<T> t) {
-            log.debug(() => "MetaRegistry.getAppropriateClassForType: <``t``> is an IntersectionType");
+            log.debug(() => "getAppropriateClassForType: <``t``> is an IntersectionType");
 
             value intersected = interfaceComponents
                 .filterKeys((iface) => iface in t.satisfiedTypes)
@@ -93,16 +109,16 @@ shared class MetaRegistry {
                 is Class<T> cl = intersected.key) {
                 return [cl];
             }
-            log.warn(() => "MetaRegistry.getAppropriateClassForType: Haven't registered types for interface intersection: <``t``>");
+            log.warn(() => "getAppropriateClassForType: Haven't registered types for interface intersection: <``t``>");
             return empty;
         }
         // not found
-        log.warn(() => "MetaRegistry.getAppropriateClassForType: Type is not interface nor class: <``t``>");
+        log.warn(() => "getAppropriateClassForType: Type is not interface nor class: <``t``>");
         return empty;
     }
 
     shared MetaRegistry registerMetaInfoForType<T>(Class<T> t) {
-        log.info("MetaRegistry.describeAndRegisterType: register type <``t``>");
+        log.info("describeAndRegisterType: register type <``t``>");
         value clazz->[extClazzez, ifaces] = describeClass(t);
         return withState {
             components = components.patch(map {clazz -> [extClazzez, ifaces]});
@@ -122,18 +138,9 @@ shared class MetaRegistry {
             "interfaceComponents size: ``interfaceComponents.size``",
             "extendComponents size: ``extendComponents.size``"
         }, "\n");
-        if (!components.empty) {
-            print("------------------ componenets ------------------");
-            printAll(components, "\n");
-        }
-        if (!interfaceComponents.empty) {
-            print("------------------ interfacesComponenets ------------------");
-            printAll(interfaceComponents, "\n");
-        }
-        if (!extendComponents.empty) {
-            print("-------------------- extendComponents ----------------------");
-            printAll(extendComponents, "\n");
-        }
+        printSection("components", components);
+        printSection("interfaceComponents", interfaceComponents);
+        printSection("extendComponents", extendComponents);
         print("------------------------------------------------------------");
     }
 }
