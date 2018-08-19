@@ -36,7 +36,7 @@ shared void setupLogger() {
 test
 shared void describeClass_SouldReturnCorrectInfo_ForClassWithMultiInterfaces() {
     value actual = describeClass(`RuPostman`);
-    assertEquals(actual, `RuPostman`->[[], [`Postman`, `Operator`]]);
+    assertEquals(actual, `RuPostman`->[emptySet, set{ `Postman`, `Operator` }]);
 }
 
 class One() { }
@@ -501,7 +501,7 @@ shared void registryShouldThrowExceptionWhenRegisterEnchancerWithWrongInterface2
     assertThatException(() => registry.registerEnhancer(`Service`, [`FakeDecorator2`]))
     .hasMessage("Enhancer class <" + `FakeDecorator2`.string +
             "> must have at least one constructor parameter with <"
-            + `Service`.string + "> or some of it interfaces []");
+            + `Service`.string + "> or some of it interfaces {}");
 }
 
 tag("enhancer")
