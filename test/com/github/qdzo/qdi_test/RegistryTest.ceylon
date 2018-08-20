@@ -10,7 +10,8 @@ import ceylon.test {
     assertEquals,
     assertIs,
     assertThatException,
-    tag
+    tag,
+    parameters
 }
 
 import com.github.qdzo.qdi {
@@ -20,6 +21,10 @@ import com.github.qdzo.qdi.meta {
     describeClass,
     getClassHierarchyExceptBasicClasses,
     getInterfaceHierarhy
+}
+import ceylon.language.meta.model {
+    Class,
+    Interface
 }
 beforeTestRun
 shared void setupLogger() {
@@ -33,33 +38,57 @@ shared void setupLogger() {
 
 // ========================= DESCRIBE-FUNCTIONS TESTS ==========================
 
-test
-shared void describeClass_SouldReturnCorrectInfo_ForClassWithMultiInterfaces() {
-    value actual = describeClass(`RuPostman`);
-    assertEquals(actual, `RuPostman`->[emptySet, set{ `Postman`, `Operator` }]);
-}
+shared {[Class<>, [Set<Class<>>, Set<Interface<>>]]*} clazzAndInfo => [
+   [`RuPostman`, [emptySet, set{ `Postman`, `Operator` }]]
+];
+
+test parameters(`value clazzAndInfo`)
+shared void describeClassTest(Class<Anything> clazz, [Set<Class<>>, Set<Interface<>>] clazzInfo)
+        => assertEquals(describeClass(clazz), clazzInfo);
 
 class One() { }
 class OneOne() extends One() { }
 class OneOneOne() extends OneOne() { }
 
-test
-shared void describeClassHierarhy_SouldReturnCorrectInfo_ForClassWithSeveralLevelInheritance() {
-    value actual = getClassHierarchyExceptBasicClasses(`OneOneOne`);
-    assertEquals(actual, [`OneOne`, `One`]);
-}
+shared {[Class<Anything>, Class<Anything>[]]*} clazzHierarchy => [
+    [`One`, empty],
+    [`OneOne`, [`One`]],
+    [`OneOneOne`, [`OneOne`, `One`]]
+
+];
+
+test parameters(`value clazzHierarchy`)
+shared void describeClassHierarhyTest(Class<Anything> clazz, Class<Anything>[] hierarchy)
+        => assertEquals(getClassHierarchyExceptBasicClasses(clazz), hierarchy);
 
 interface A {}
 interface B {}
 interface C {}
 interface AB satisfies A & B {}
 interface ABC satisfies AB & C {}
-class Clazz() satisfies ABC { }
+class ClazzA() satisfies A {}
+class ClazzB() satisfies B {}
+class ClazzC() satisfies C {}
+class ClazzAB() satisfies AB {}
+class ClazzABC() satisfies ABC {}
+class ClazzABC2() extends ClazzABC(){}
+
+shared {[Class<Anything>, Set<Interface<Anything>>]*} clazzInterfaces => [
+    [`ClazzA`, set{`A`}],
+    [`ClazzB`, set{`B`}],
+    [`ClazzC`, set{`C`}],
+    [`ClazzAB`, set{`AB`, `A`, `B`}],
+    [`ClazzABC`, set{`ABC`, `AB`, `A`, `B`, `C`}]
+];
+
+test parameters(`value clazzInterfaces`)
+shared void getInterfaceHierarhy_SouldReturnCorrectInfo(Class<> clazz, Set<Interface<>> ifaces)
+        => assertEquals(getInterfaceHierarhy(clazz), ifaces);
 
 test
-shared void describeClassInterfaces_SouldReturnCorrectInfo_ForClassWithSeveralNestedInterfaces() {
-    value actual = getInterfaceHierarhy(`Clazz`);
-    assertEquals(actual, [`ABC`, `AB`, `C`, `A`, `B`]);
+shared void getInterfaceHierarhy_SouldNotGetIndirectIntefacesDerivedFromBaseType() {
+    value actual = getInterfaceHierarhy(`ClazzABC2`);
+    assertEquals(actual, emptySet);
 }
 
 // ------------------ MAIN TESTS ------------------------
@@ -264,6 +293,13 @@ shared void registryShouldCreateInstanceWithIntersectionTypeDependency() {
     value registry = newRegistry { `RuPostalStore`, `RuPostman`, `AsiaPostman` };
     value actual = registry.getInstance(`RuPostalStore`);
     assertIs(actual, `RuPostalStore`);
+}
+
+test
+shared void registryShouldCreateInstanceWithIntersectionType() {
+    value registry = newRegistry { `RuPostman`, `AsiaPostman` };
+    value actual = registry.getInstance(`Operator&Postman`);
+    assertIs(actual, `RuPostman`);
 }
 
 // ============================ GENERIC TYPES ================================
