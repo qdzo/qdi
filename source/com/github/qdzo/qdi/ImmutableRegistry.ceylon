@@ -10,12 +10,12 @@ import ceylon.logging {
 
 import com.github.qdzo.qdi.meta {
     describeClass,
-    getInterfaceHierarhy,
     MetaRegistry,
     resolveConstructorParameters,
-    getClassInstancePair,
     basicTypes,
-    Parameter
+    Parameter,
+    getInterfaceHierarchySet,
+    getClassInstancePair
 }
 
 
@@ -413,7 +413,7 @@ Exception? checkEnchancer<T, W>(Class<T>|Interface<T> target, Class<W> wrapper) 
     value targetInfo =
             if(is Class<T> target)
             then describeClass(target)
-            else target->[emptySet, set(getInterfaceHierarhy(target))];
+            else target->[emptySet, set(getInterfaceHierarchySet(target))];
 
     value wrapperInfo = describeClass(wrapper);
 

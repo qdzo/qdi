@@ -1,8 +1,12 @@
+import ceylon.language.meta.model {
+    Class,
+    Interface
+}
 import ceylon.logging {
     addLogWriter,
     writeSimpleLog,
     defaultPriority,
-    trace
+    error
 }
 import ceylon.test {
     beforeTestRun,
@@ -20,18 +24,15 @@ import com.github.qdzo.qdi {
 import com.github.qdzo.qdi.meta {
     describeClass,
     getClassHierarchyExceptBasicClasses,
-    getInterfaceHierarhy
-}
-import ceylon.language.meta.model {
-    Class,
-    Interface
+    getInterfaceHierarchySet
 }
 beforeTestRun
 shared void setupLogger() {
     addLogWriter(writeSimpleLog);
     defaultPriority =
-             trace
-//             info
+//             trace
+//            info
+        error
     ;
 }
 
@@ -39,26 +40,28 @@ shared void setupLogger() {
 // ========================= DESCRIBE-FUNCTIONS TESTS ==========================
 
 shared {[Class<>, [Set<Class<>>, Set<Interface<>>]]*} clazzAndInfo => [
-   [`RuPostman`, [emptySet, set{ `Postman`, `Operator` }]]
+   [`RuPostman`, [emptySet, set{ `Postman`, `Operator` }]],
+   [`RuPostman2`, [set{`RuPostman`}, set{ `Postman`, `Operator` }]],
+   [`RuPostman3`, [set{`RuPostman2`, `RuPostman`}, set{ `Postman`, `Operator` }]]
 ];
 
 test parameters(`value clazzAndInfo`)
-shared void describeClassTest(Class<Anything> clazz, [Set<Class<>>, Set<Interface<>>] clazzInfo)
-        => assertEquals(describeClass(clazz), clazzInfo);
+shared void describeClassPropertyTest(Class<Anything> clazz, [Set<Class<>>, Set<Interface<>>] clazzInfo)
+        => assertEquals(describeClass(clazz), clazz -> clazzInfo);
 
 class One() { }
 class OneOne() extends One() { }
 class OneOneOne() extends OneOne() { }
 
-shared {[Class<Anything>, Class<Anything>[]]*} clazzHierarchy => [
-    [`One`, empty],
-    [`OneOne`, [`One`]],
-    [`OneOneOne`, [`OneOne`, `One`]]
+shared {[Class<Anything>, Set<Class<Anything>>]*} clazzHierarchy => [
+    [`One`, emptySet],
+    [`OneOne`, set{`One`}],
+    [`OneOneOne`, set{`OneOne`, `One`}]
 
 ];
 
 test parameters(`value clazzHierarchy`)
-shared void describeClassHierarhyTest(Class<Anything> clazz, Class<Anything>[] hierarchy)
+shared void describeClassHierarhyPropertyTest(Class<Anything> clazz, Set<Class<Anything>> hierarchy)
         => assertEquals(getClassHierarchyExceptBasicClasses(clazz), hierarchy);
 
 interface A {}
@@ -82,12 +85,12 @@ shared {[Class<Anything>, Set<Interface<Anything>>]*} clazzInterfaces => [
 ];
 
 test parameters(`value clazzInterfaces`)
-shared void getInterfaceHierarhy_SouldReturnCorrectInfo(Class<> clazz, Set<Interface<>> ifaces)
-        => assertEquals(getInterfaceHierarhy(clazz), ifaces);
+shared void getInterfaceHierarhyPropertyTest(Class<> clazz, Set<Interface<>> ifaces)
+        => assertEquals(getInterfaceHierarchySet(clazz), ifaces);
 
 test
 shared void getInterfaceHierarhy_SouldNotGetIndirectIntefacesDerivedFromBaseType() {
-    value actual = getInterfaceHierarhy(`ClazzABC2`);
+    value actual = getInterfaceHierarchySet(`ClazzABC2`);
     assertEquals(actual, emptySet);
 }
 
@@ -123,7 +126,7 @@ class Box2(shared Atom2 atom = Atom2(2))  {
 test
 shared void registryShouldRegisterType_whenRegisterCalled() {
     value registry = newRegistry();
-    registry.register(`Atom`);
+//    registry.register(`Atom`);
     assertIs(registry.getInstance(`Atom`), `Atom`);
 }
 
@@ -164,8 +167,8 @@ shared void registryShouldCreateInstance_ForTypeWithExplicitConstructorWithOnePa
 test
 shared void registryShouldCreateInstance_WithOneRegisteredDependencyType() {
     value registry = newRegistry();
-    registry.register(`Atom`);
-    registry.register(`Box`);
+//    registry.register(`Atom`);
+//    registry.register(`Box`);
     value box = registry.getInstance(`Box`);
     assertIs(box, `Box`);
 }
@@ -173,7 +176,7 @@ shared void registryShouldCreateInstance_WithOneRegisteredDependencyType() {
 test
 shared void registryShouldRegisterTypeWithInstanceInRegisterMethodCall() {
     value registry = newRegistry();
-    registry.register(Box(Atom()));
+//    registry.register(Box(Atom()));
     value box = registry.getInstance(`Box`);
     assertIs(box, `Box`);
 }
@@ -281,6 +284,8 @@ shared void registryShouldCreateInstanceWithUnionTypeDependency() {
 interface Postman { }
 interface Operator { }
 class RuPostman() satisfies Postman & Operator { }
+class RuPostman2() extends RuPostman() { }
+class RuPostman3() extends RuPostman2() { }
 class AsiaPostman() satisfies Postman { }
 class RuPostal(shared Postman postman) { }
 class RuPostalStore(shared Postman & Operator employee) { }

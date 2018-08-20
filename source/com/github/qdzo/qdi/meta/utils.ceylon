@@ -146,13 +146,13 @@ shared Set<Interface<>> getInterfaceHierarchyExceptBasicTypes<T>(Interface<T>|Cl
     if(isBasicType(ifaceOrClass)){
         return emptySet;
     }
-    return getInterfaceHierarhySet(ifaceOrClass);
+    return getInterfaceHierarchySet(ifaceOrClass);
 }
 
 "Get set of interfaces satisfied by given class/interface"
-shared Set<Interface<>> getInterfaceHierarhySet<T>(Interface<T>|Class<T> ifaceOrClass) {
+shared Set<Interface<>> getInterfaceHierarchySet<T>(Interface<T>|Class<T> ifaceOrClass) {
     assert(is Interface<>[] ifaces =  ifaceOrClass.satisfiedTypes);
-    return set(ifaces.append(ifaces.flatMap(getInterfaceHierarhySet).sequence()));
+    return set(ifaces.append(ifaces.flatMap(getInterfaceHierarchySet).sequence()));
 }
 
 "Describe full-hierarchy from first extended class to Basic types(exclusive)
@@ -174,11 +174,11 @@ getClassHierarchyExceptBasicClasses<T>(Class<T> clazz) {
 }
 
 
-//shared Class<> -> Anything getClassInstancePair<T>(Class<T>|T classOrInstance) {
-//    if(is Class<T> classOrInstance) {
-//        return classOrInstance->null;
-//    }
-//    assert(is Class<T> clazz = type(classOrInstance));
-//    return clazz -> classOrInstance;
-//}
+shared Class<> -> Anything getClassInstancePair<T>(Class<T>|T classOrInstance) {
+    if(is Class<T> classOrInstance) {
+        return classOrInstance->null;
+    }
+    assert(is Class<T> clazz = type(classOrInstance));
+    return clazz -> classOrInstance;
+}
 

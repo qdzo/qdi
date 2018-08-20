@@ -74,10 +74,8 @@
     <!-- repositories setup -->
     <property name="user.repo" location="${user.home}/.ceylon/repo"/>
     <property name="out.repo" location="modules" relative="true"/>
-    <property name="deps.repo" location="dependencies" relative="true"/>
     <reposet id="local.reposet">
         <repo url="${out.repo}"/>
-        <repo url="${deps.repo}"/>
     </reposet>
 
 
@@ -251,7 +249,7 @@
     <target name="test" depends="compile-all"
     description="Runs test on modules, specified in build.properties file">
         <exec executable="ceylon" failonerror="true">
-            <arg line="test --rep=${deps.repo} --rep=${out.repo} ${test.module.names}"/>
+            <arg line="test  --rep=${out.repo} ${test.module.names}"/>
         </exec>
     </target>
 
@@ -269,14 +267,6 @@
         <delete dir="${out.repo}"/>
         <echo>Done</echo>
     </target>
-
-
-    <!-- checks if there are need to copy dependencies or not.
-        It works by comparing module.ceylon files modify-date and
-        deps/copy.done file modify date.
-        NOTE: This approach does not work in 2 situations:
-        1) if some module in source dir has been deleted
-        2) some deps-dir contents has been deleted manually -->
 
 
     <target name="install" depends="compile" description="Publishes modules to ceylon user-repo">
