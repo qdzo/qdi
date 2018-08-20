@@ -96,22 +96,23 @@ describeClass<T>(Class<T> clazz) {
 
     value extendedClazzez = getClassHierarchyExceptBasicClasses(clazz);
     value interfaces =  getInterfaceHierarhyExeptBasicTypes(clazz);
-    return clazz -> [set(extendedClazzez), set(interfaces)];
+    return clazz -> [set(extendedClazzez), interfaces];
 }
 
 shared [Class<>+] basicTypes = [`String`, `Integer`, `Float`, `Boolean`, `Character`, `Basic`, `Object`, `Anything`];
 shared Boolean isBasicType(Type<> t) => any { for (bt in basicTypes) t.exactly(bt) };
 
-shared [Interface<>*] getInterfaceHierarhyExeptBasicTypes<T>(Interface<T>|Class<T> ifaceOrClass) {
+shared Set<Interface<>> getInterfaceHierarhyExeptBasicTypes<T>(Interface<T>|Class<T> ifaceOrClass) {
     if(isBasicType(ifaceOrClass)){
-        return empty;
+        return emptySet;
     }
     return getInterfaceHierarhy(ifaceOrClass);
 }
 
-shared [Interface<>*] getInterfaceHierarhy<T>(Interface<T>|Class<T> ifaceOrClass) {
+shared Set<Interface<>> getInterfaceHierarhy<T>(Interface<T>|Class<T> ifaceOrClass) {
     assert(is Interface<>[] ifaces =  ifaceOrClass.satisfiedTypes);
-    return concatenate(ifaces, ifaces.flatMap(getInterfaceHierarhy));
+//    return concatenate(ifaces, ifaces.flatMap(getInterfaceHierarhy));
+    return set(concatenate(ifaces, ifaces.flatMap(getInterfaceHierarhy)));
 }
 
 /*
