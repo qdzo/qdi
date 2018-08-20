@@ -35,7 +35,7 @@ Logger log = logger(`module`);
  Registry has one possible internal mutation - caching instances.
  That cache also copied to new registries wich created with register methods.
  "
-shared class ImmutableRegistry satisfies Registry  {
+shared class ImmutableRegistry satisfies Registry<ImmutableRegistry>  {
 
     late MetaRegistry metaRegistry;
 
@@ -101,7 +101,7 @@ shared class ImmutableRegistry satisfies Registry  {
     }
 
     "Add new direct parameter for given class"
-    shared actual Registry registerParameter<T>(
+    shared actual Registry<ImmutableRegistry> registerParameter<T>(
             "Target class for injecing parameter"
             Class<T> targetClass,
             "Constructor paramerter name"
@@ -120,7 +120,7 @@ shared class ImmutableRegistry satisfies Registry  {
     }
 
     "Create copy of current registry and add new `class or instance` to it."
-    shared actual Registry register<T>(Class<T>|Object typeOrInstance) {
+    shared actual Registry<ImmutableRegistry> register<T>(Class<T>|Object typeOrInstance) {
         value clazz->inst = getClassInstancePair(typeOrInstance);
         log.info("register: register " +
                     (if(exists inst) then "instantiated: <``inst``> for " else "") +
@@ -133,7 +133,8 @@ shared class ImmutableRegistry satisfies Registry  {
         };
     }
 
-    shared actual Registry registerEnhancer<T>(Interface<T> target, [Class<Anything,Nothing>+] wrappers) {
+    shared actual Registry<ImmutableRegistry>
+    registerEnhancer<T>(Interface<T> target, [Class<Anything,Nothing>+] wrappers) {
         log.info("registerEnchancer: try register enhancers ``wrappers`` for type <``target``>");
         if(is Exception error = checkEnchancers(target, wrappers)) {
             throw error;
@@ -340,9 +341,21 @@ shared class ImmutableRegistry satisfies Registry  {
         throw Exception("Unresolved dependency <``p.parameterName``> " +
         "(``p.parameterType``) for class <``p.targetClass``>");
     }
+
+    shared actual Registry<ImmutableRegistry> patch(Registry<ImmutableRegistry> registry) {
+        assert(is ImmutableRegistry registry);
+        // TODO: Not complete (Vitaly 21.08.2018)
+        return withState{
+            parameters = parameters.patch(registry.parameters);
+            metaRegistry = metaRegistry;
+            componentsCache = componentsCache.patch(registry.componentsCache);
+            enhancerComponents = enhancerComponents.patch(registry.enhancerComponents);
+        };
+    }
+
 }
 
-shared Registry newRegistry(
+shared Registry<ImmutableRegistry> newRegistry(
         {Class<>|Object*} components = empty,
         {[Class<>, String, Anything]*} parameters = empty,
         {[Interface<>, [Class<>+]]*} enhancers = empty

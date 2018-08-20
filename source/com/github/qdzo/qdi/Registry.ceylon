@@ -20,18 +20,18 @@ shared alias Enhancers => [Class<>+];
  - Can create instantces from registered components.
  - Can register new instances or classes or enhancers for future use.
  - Wraps instances before returning them with wrappers (decorators)"
-shared interface Registry {
+shared interface Registry<Other> of Other given Other satisfies Registry<Other> {
 
 	"Try to create instance for given type (class/interface/union/intersection)"
 	throws(`class Exception`, "When can't create instance.")
 	shared formal T getInstance<T>(Type<T> t);
 
 	"Add new `class or instance` to registry and return that registry"
-	shared formal Registry register<T>(Class<T>|Object classOrInstance);
+	shared formal Registry<Other> register<T>(Class<T>|Object classOrInstance);
 
 	"Add new enhancers for given interface"
     throws(`class Exception`, "when enhancer don't comforms to the rules")
-	shared formal Registry registerEnhancer<T>(
+	shared formal Registry<Other> registerEnhancer<T>(
 			"Target interface to wrap with enhancers"
 			Interface<T> target,
 			"Ordered list of enhancers:
@@ -40,7 +40,7 @@ shared interface Registry {
 			Enhancers enhancers);
 
     "Add new direct parameter for given class"
-    shared formal Registry registerParameter<T>(
+    shared formal Registry<Other> registerParameter<T>(
             "Target class for injecing parameter"
             Class<T> target,
             "Constructor paramerter name"
@@ -49,4 +49,9 @@ shared interface Registry {
              Values have highest priority for injection"
             ValueToInject val);
 
+    "Patch current registry with given one.
+     Returns new registry with union data of given two.
+     If there are collisions in data then given registry
+     has higher priority and overwrites info in current."
+    shared formal Registry<Other> patch(Registry<Other> registry);
 }
