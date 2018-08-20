@@ -6,6 +6,7 @@
     <basename property="project.name" file="${basedir}"/>
 
     <!--  START CEYLON SETUP -->
+
     <condition property="batExt" value=".bat">
         <os family="windows" />
     </condition>
@@ -20,22 +21,14 @@
     </condition>
     <property name="ceylon.ant.lib" value="${ceylon.home}/lib/ceylon-ant.jar" />
     <property name="source.encoding" value="UTF-8"/>
-    <!--  END CEYLON SETUP -->
+    <path id="ant-tasks">
+      <pathelement location="${ceylon.ant.lib}"/>
+    </path>
+    <typedef resource="com/redhat/ceylon/ant/antlib.xml" classpathref="ant-tasks"/>
 
-    <target name="help" description="Print ant projecthelp target">
-      <java classname="org.apache.tools.ant.Main">
-        <arg value="-projecthelp" />
-      </java>
-    </target>
 
-    <!-- init ant libraries,
-         including ceylon tasks, ant-contrib tasks and vizant task. -->
-    <target name="-init-ant-lib">
-      <!-- ceylon-specific ant tasks -->
-      <path id="ant-tasks">
-        <pathelement location="${ceylon.ant.lib}"/>
-      </path>
-      <typedef resource="com/redhat/ceylon/ant/antlib.xml" classpathref="ant-tasks"/>
+    <!-- INIT ANT LIBRARIES, including ceylon tasks, ant-contrib tasks and vizant task. -->
+
 
       <!--user ant-libs should be here -->
       <property name="user.ant.lib" value="${user.home}/.ant/lib"/>
@@ -56,8 +49,47 @@
       <!--define tasks if lib exists-->
       <taskdef name="vizant" classname="net.sourceforge.vizant.Vizant"
                classpath="${lib.vizant.path}" if:set="lib.vizant.present"/>
+
+
+    <!--INITS PROJECT PROPERTIES-->
+
+
+    <!-- LOAD PROPERTIES FROM FILE for specific environment. (test, stage, prod, etc..)-->
+    <property file="${env.PROFILE}.properties" />
+    <echo message="--- Load '${env.PROFILE}' build profile  ---" if:set="env.PROFILE"/>
+
+    <!-- LOAD PROPERTIES FROM FILE (all project specific properties should be here-->
+    <property name="build.properties.file" value="build.properties" />
+    <property file="${build.properties.file}" />
+
+    <!-- source dirs setup -->
+    <property name="source.dir" value="./source"/>
+    <property name="testsource.dir" value="./test"/>
+    <property name="source.dirs" value="${source.dir}${path.separator}${testsource.dir}"/>
+    <moduleset id="full.moduleset">
+        <sourcemodules/>
+        <sourcemodules dir="./test"/>
+    </moduleset>
+
+    <!-- repositories setup -->
+    <property name="user.repo" location="${user.home}/.ceylon/repo"/>
+    <property name="out.repo" location="modules" relative="true"/>
+    <property name="deps.repo" location="dependencies" relative="true"/>
+    <reposet id="local.reposet">
+        <repo url="${out.repo}"/>
+        <repo url="${deps.repo}"/>
+    </reposet>
+
+
+    <!-- TARGETS -->
+
+
+    <target name="help" description="Print ant projecthelp target">
+      <java classname="org.apache.tools.ant.Main">
+        <arg value="-projecthelp" />
+      </java>
     </target>
-    
+
 
     <!--configure proxy if it enabled in system-->
     <target name="-init-proxy">
@@ -71,38 +103,6 @@
         <setproxy proxyhost="${proxy.host}" proxyport="${proxy.port}" if:set="proxy.enabled"/>
     </target>
 
-
-    <!--inits project properties-->
-    <target name="-init" depends="-init-ant-lib" unless="init.already">
-
-        <!-- LOAD PROPERTIES FROM FILE for specific environment. (test, stage, prod, etc..)-->
-        <property file="${env.PROFILE}.properties" />
-        <echo message="--- Load '${env.PROFILE}' build profile  ---" if:set="env.PROFILE"/>
-
-        <!-- LOAD PROPERTIES FROM FILE (all project specific properties should be here-->
-        <property name="build.properties.file" value="build.properties" />
-        <property file="${build.properties.file}" />
-
-        <!-- source dirs setup -->
-        <property name="source.dir" value="./source"/>
-        <property name="testsource.dir" value="./test"/>
-        <property name="source.dirs" value="${source.dir}${path.separator}${testsource.dir}"/>
-        <moduleset id="full.moduleset">
-            <sourcemodules/>
-            <sourcemodules dir="./test"/>
-        </moduleset>
-
-        <!-- repositories setup -->
-        <property name="user.repo" location="${user.home}/.ceylon/repo"/>
-        <property name="out.repo" location="modules" relative="true"/>
-        <reposet id="local.reposet">
-            <repo url="${out.repo}"/>
-        </reposet>
-
-
-        <!-- set init flag -->
-        <property name="init.already" value="true"/>
-    </target>
 
 
     <target name="fetch" description="Fetches changes from remote repository">
@@ -120,7 +120,7 @@
          2) git revision number
          3) git diff of current repo state and last commit
     -->
-    <target name="-create-build-info" depends="-init">
+    <target name="-create-build-info">
       <echo level="verbose">Generating build info</echo>
       <!--create timestamp-->
       <tstamp>
@@ -216,7 +216,7 @@
 
     <!-- CODE TASKS -->
 
-    <target name="compile" depends="-init">
+    <target name="compile">
         <antcall target="-create-build-info"/>
         <ceylon-compile encoding="${source.encoding}" src="${source.dir}">
             <reposet refid="local.reposet"/>
@@ -228,7 +228,7 @@
     </target>
 
 
-    <target name="compile-tests" depends="-init"
+    <target name="compile-tests"
       description="Compile tests sources">
       <ceylon-compile encoding="${source.encoding}" src="${testsource.dir}">
         <reposet refid="local.reposet"/>
@@ -239,42 +239,44 @@
     </target>
 
     <!--Compiles all modules, including tests -->
-    <target name="compile-all" depends="compile, compile-tests"
-      description="Compiles sources and tests">
+    <target name="compile-all" description="Compiles sources and tests">
+        <ceylon-compile encoding="${source.encoding}"
+                        nomtimecheck="false"
+                        src="${source.dirs}">
+            <reposet refid="local.reposet"/>
+            <moduleset refid="full.moduleset"/>
+        </ceylon-compile>
     </target>
 
     <target name="test" depends="compile-all"
     description="Runs test on modules, specified in build.properties file">
         <exec executable="ceylon" failonerror="true">
-            <arg line="test --rep=${out.repo} ${test.module.names}"/>
+            <arg line="test --rep=${deps.repo} --rep=${out.repo} ${test.module.names}"/>
         </exec>
     </target>
 
     
-    <target name="doc" depends="-init">
+    <target name="doc">
         <ceylon-doc encoding="${source.encoding}">
             <sourcemodules/>
         </ceylon-doc>
     </target>
 
 
-    <target name="run" depends="compile">
-        <condition property="run.module" value="${module}" else="${run.module.name}/${run.module.version}">
-            <isset property="module"/>
-        </condition>
-        <ceylon-run module="${run.module}">
-            <reposet refid="local.reposet"/>
-        </ceylon-run>
-    </target>
-
-
-    <target name="clean" depends="-init"
-            description="Cleans project from artifacts and dependencies dir">
+    <target name="clean"
+        description="Cleans ./modules dir">
         <echo>Deleting compiled modules</echo>
         <delete dir="${out.repo}"/>
         <echo>Done</echo>
     </target>
 
+
+    <!-- checks if there are need to copy dependencies or not.
+        It works by comparing module.ceylon files modify-date and
+        deps/copy.done file modify date.
+        NOTE: This approach does not work in 2 situations:
+        1) if some module in source dir has been deleted
+        2) some deps-dir contents has been deleted manually -->
 
 
     <target name="install" depends="compile" description="Publishes modules to ceylon user-repo">
@@ -289,18 +291,18 @@
 
     <target name="all-quick" description="Runs full cycle(without clean)">
         <antcall target="fetch"/>
-        <antcall target="compile"/>
+        <antcall target="test"/>
     </target>
 
 
     <target name="all"
-    description="Runs full cycle(clean/fetch/compile)">
+    description="Runs full cycle(clean/fetch/build/test)">
         <antcall target="clean"/>
         <antcall target="all-quick"/>
     </target>
 
 
-    <target name="setup-ant" depends="-init, -init-proxy">
+    <target name="setup-ant" depends="-init-proxy">
         <!--INSTALL ANT-CONTRIB LIBRARY-->
         <property name="lib.ant-contrib.distrib" value="ant-contrib-1.0b3-bin.zip"/>
 
@@ -324,7 +326,7 @@
     </target>
 
 
-    <target name="setup-project" depends="-init"
+    <target name="setup-project"
             description="Creates build properties file configured for project">
         
         <echo>Checking project for setup</echo>
@@ -355,7 +357,7 @@
         <echo>Searching test modules</echo>
         <pathconvert property="test.path">
             <fileset dir="${testsource.dir}" includes="**/*test*/**/module.ceylon"/>
-            <globmapper from="${basedir}/source/*/module.ceylon" to="*"/>
+            <globmapper from="${basedir}/test/*/module.ceylon" to="*"/>
         </pathconvert>
         <script language="javascript">
             var testModules = project
@@ -365,7 +367,6 @@
             project.setProperty("guess.test.module.names", testModules);
         </script>
         <property name="test.module.names" value="${guess.test.module.names}"/>
-
 
         <!--write properties to file-->
         <echo>Creating ${build.properties.file} file</echo>
@@ -386,7 +387,7 @@
 
 
     <!--generating ant target dependency graph-->
-    <target name="target-graph" depends="-init">
+    <target name="target-graph">
         <!--check if grapviz installed-->
         <available file="dot" filepath="${env.PATH}" property="dot.executable.present"/>
         <fail message="You haven't graphViz application installed" unless="dot.executable.present"/>
