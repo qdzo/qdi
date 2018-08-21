@@ -26,10 +26,7 @@ shared interface Registry {
 	throws(`class Exception`, "When can't create instance.")
 	shared formal T getInstance<T>(Type<T> t);
     
-    "Patch current registry with given one.
-     Returns new registry with union data of given two.
-     If there are collisions in data then given registry
-     has higher priority and overwrites info in current."
+    "Patch current registry with given and returns new-one - already patched"
     shared formal Registry patch(Registry registry);
 
 //	"Add new `class or instance` to registry and return that registry"

@@ -24,6 +24,25 @@ Logger log = logger(`module`);
 // ----------------------------------------------------
 
 
+"Component - declaration of non abstract class, or pure instance"
+shared alias Component =>  Class<>|Object;
+
+
+"Direct parameters for custom classes.
+ Shape: [class-for-injection, constructor-parameter-name, value-to-inject]"
+shared alias ParameterForInjection => [Class<>, String, Anything];
+
+
+"Enchancers-declaration is tuple of shape `[target-interface-to-wrap, [enhancer-list]]`
+ 
+ Enchancer in it's own way is simple wrapper class, that satisfy two constrains:
+
+ - it implements interface which it wraps
+ - it consumes interface which it wraps as constructor argument
+
+ > Enchancers are used as adhoc AOP."
+shared alias EnchancersDeclaration => [Interface<>, [Class<>+]];
+
 "Immutable Registry - is container that stores information
  about classes, enhancers, parameters and can instantiate them later.
 
@@ -62,12 +81,12 @@ shared class ImmutableRegistry satisfies Registry {
     shared new (
             "Components - class declarations or instances, which will be instantiated
              and returned by getInstance method"
-            {Class<>|Object*} components = empty,
+            {Component*} components = empty,
             "Direct parameters for custom classes.
              Shape: [class-for-injection, constructor-parameter-name, value-to-inject]"
-            {[Class<>, String, Anything]*} parameters = empty,
+            {ParameterForInjection*} parameters = empty,
             "Enhancers is simple wrapper classes, wich can be used as adhoc AOP."
-            {[Interface<>, [Class<>+]]*} enhancers = empty) {
+            {EnchancersDeclaration*} enhancers = empty) {
 
         value classInstencePairs = components.collect(getClassInstancePair);
         this.componentsCache = map(classInstencePairs);
@@ -98,54 +117,6 @@ shared class ImmutableRegistry satisfies Registry {
         this.enhancerComponents = enhancerComponents;
         this.componentsCache = componentsCache;
     }
-
-//    "Add new direct parameter for given class"
-//    shared actual Registry registerParameter<T>(
-//            "Target class for injecing parameter"
-//            Class<T> targetClass,
-//            "Constructor paramerter name"
-//            ParameterName param,
-//            "Value to inject.
-//             Values have highest priority for injection"
-//            ValueToInject val) {
-//        log.info("registerParameter: for type <``targetClass``>," +
-//        " name: <``param``>, val: <``val else "null"``>");
-//        return withState {
-//            metaRegistry = metaRegistry;
-//            parameters = parameters.patch(map { [targetClass, param]->val });
-//            enhancerComponents = enhancerComponents;
-//            componentsCache = componentsCache;
-//        };
-//    }
-
-//    "Create copy of current registry and add new `class or instance` to it."
-//    shared actual Registry register<T>(Class<T>|Object typeOrInstance) {
-//        value clazz->inst = getClassInstancePair(typeOrInstance);
-//        log.info("register: register " +
-//        (if (exists inst) then "instantiated: <``inst``> for " else "") +
-//        "type <``clazz``>");
-//        return withState {
-//            metaRegistry = metaRegistry.registerMetaInfoForType(clazz);
-//            parameters = parameters;
-//            enhancerComponents = enhancerComponents;
-//            componentsCache = componentsCache.patch(map { clazz->inst });
-//        };
-//    }
-
-//    shared actual Registry
-//    registerEnhancer<T>(Interface<T> target, [Class<Anything, Nothing>+] wrappers) {
-//        log.info("registerEnchancer: try register enhancers ``wrappers`` for type <``target``>");
-//        if (is Exception error = checkEnchancers(target, wrappers)) {
-//            throw error;
-//        }
-//        log.info("registerEnchancer: register enhancers ``wrappers`` successfully");
-//        return withState {
-//            metaRegistry = metaRegistry;
-//            parameters = parameters;
-//            enhancerComponents = enhancerComponents.patch(map { target->wrappers });
-//            componentsCache = componentsCache;
-//        };
-//    }
 
     // pipe function
     [Class<T>, T|Exception] tryToCreateInstanceIfNotExists<T>([Class<T>, T?] instantiated) {
@@ -341,15 +312,31 @@ shared class ImmutableRegistry satisfies Registry {
     }
 
     shared actual Registry patch(Registry registry) {
-        assert (is ImmutableRegistry registry);
-        // TODO: Not complete (Vitaly 21.08.2018)
-        return withState {
-            parameters = parameters.patch(registry.parameters);
-            metaRegistry = metaRegistry;
-            componentsCache = componentsCache.patch(registry.componentsCache);
-            enhancerComponents = enhancerComponents.patch(registry.enhancerComponents);
-        };
+        if(is ImmutableRegistry registry) {
+            return withState {
+                parameters = parameters.patch(registry.parameters);
+                metaRegistry = metaRegistry;
+                componentsCache = componentsCache.patch(registry.componentsCache);
+                enhancerComponents = enhancerComponents.patch(registry.enhancerComponents);
+            };
+        }
+        return ChainedRegistry(this, registry);
     }
+}
+
+"Chained registry - pure composition registry. Takes 2 registries
+ and chains method-calls in parameter order - 'first' -> 'second'"
+class ChainedRegistry(Registry first, Registry second) satisfies Registry {
+    shared actual T getInstance<T>(Type<T> t) {
+        try {
+            return first.getInstance(t);
+        } catch(Exception e) {
+            return second.getInstance(t);
+        }
+    }
+
+    shared actual Registry patch(Registry registry)
+            => ChainedRegistry(this, registry);
 }
 
 shared Registry newRegistry(

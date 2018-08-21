@@ -73,21 +73,21 @@ shared class MetaRegistry {
         this.interfaceComponents = interfaceComponents;
     }
 
-//    shared MetaRegistry patch(MetaRegistry metaRegistry) {
-//        return withState {
-//            components = components.patch(metaRegistry.components); // rewrite clazz-info without risk.
-//            extendComponents = mergeMapsWith<Class<>, Set<Class<>>> {
-//                first = extendComponents;
-//                second = metaRegistry.extendComponents;
-//                mergeFn = (a,  b) => a.union(b);
-//            };
-//            interfaceComponents = mergeMapsWith<Interface<>, Set<Class<>>> {
-//                first = interfaceComponents;
-//                second = metaRegistry.interfaceComponents;
-//                mergeFn = (a,  b) => a.union(b);
-//            };
-//        };
-//    }
+    shared MetaRegistry patch(MetaRegistry metaRegistry) {
+        return withState {
+            components = components.patch(metaRegistry.components); // rewrite clazz-info without risk.
+            extendComponents = mergeMapsWith<Class<>, Set<Class<>>> {
+                first = extendComponents;
+                second = metaRegistry.extendComponents;
+                mergeFn = (a,  b) => a.union(b);
+            };
+            interfaceComponents = mergeMapsWith<Interface<>, Set<Class<>>> {
+                first = interfaceComponents;
+                second = metaRegistry.interfaceComponents;
+                mergeFn = (a,  b) => a.union(b);
+            };
+        };
+    }
 
 //        shared Boolean isRegistered<T>(Class<T> clazz) => componentsCache[clazz] exists;
     
