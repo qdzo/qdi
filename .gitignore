@@ -4,3 +4,4 @@ modules
 /.exploded/
 /classes/
 /.settings/
+**/build.info
