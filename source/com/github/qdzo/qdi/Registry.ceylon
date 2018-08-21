@@ -20,38 +20,39 @@ shared alias Enhancers => [Class<>+];
  - Can create instantces from registered components.
  - Can register new instances or classes or enhancers for future use.
  - Wraps instances before returning them with wrappers (decorators)"
-shared interface Registry<Other> of Other given Other satisfies Registry<Other> {
+shared interface Registry {
 
 	"Try to create instance for given type (class/interface/union/intersection)"
 	throws(`class Exception`, "When can't create instance.")
 	shared formal T getInstance<T>(Type<T> t);
-
-	"Add new `class or instance` to registry and return that registry"
-	shared formal Registry<Other> register<T>(Class<T>|Object classOrInstance);
-
-	"Add new enhancers for given interface"
-    throws(`class Exception`, "when enhancer don't comforms to the rules")
-	shared formal Registry<Other> registerEnhancer<T>(
-			"Target interface to wrap with enhancers"
-			Interface<T> target,
-			"Ordered list of enhancers:
-             - Enhancers need to be with the same interface.
-             - Every next enhancer wraps previous."
-			Enhancers enhancers);
-
-    "Add new direct parameter for given class"
-    shared formal Registry<Other> registerParameter<T>(
-            "Target class for injecing parameter"
-            Class<T> target,
-            "Constructor paramerter name"
-            ParameterName param,
-            "Value to inject.
-             Values have highest priority for injection"
-            ValueToInject val);
-
+    
     "Patch current registry with given one.
      Returns new registry with union data of given two.
      If there are collisions in data then given registry
      has higher priority and overwrites info in current."
-    shared formal Registry<Other> patch(Registry<Other> registry);
+    shared formal Registry patch(Registry registry);
+
+//	"Add new `class or instance` to registry and return that registry"
+//	shared formal Registry register<T>(Class<T>|Object classOrInstance);
+//
+//	"Add new enhancers for given interface"
+//    throws(`class Exception`, "when enhancer don't comforms to the rules")
+//	shared formal Registry registerEnhancer<T>(
+//			"Target interface to wrap with enhancers"
+//			Interface<T> target,
+//			"Ordered list of enhancers:
+//             - Enhancers need to be with the same interface.
+//             - Every next enhancer wraps previous."
+//			Enhancers enhancers);
+//
+//    "Add new direct parameter for given class"
+//    shared formal Registry registerParameter<T>(
+//            "Target class for injecing parameter"
+//            Class<T> target,
+//            "Constructor paramerter name"
+//            ParameterName param,
+//            "Value to inject.
+//             Values have highest priority for injection"
+//            ValueToInject val);
+
 }

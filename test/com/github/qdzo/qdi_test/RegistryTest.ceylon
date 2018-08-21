@@ -190,11 +190,17 @@ shared void registryShouldRegisterTypeWithInstanceInConstuctor() {
 
 test
 shared void registryShouldCreateInstanceWithSomeSimpleParameters() {
-    value registry = newRegistry { `Person` };
-    
+    value registry = newRegistry {
+        components = [`Person`];
+        parameters = [
+            [`Person`, "name", "Vika"],
+            [`Person`, "age", 1]
+        ];
+    };
+
     value person = registry
-        .registerParameter(`Person`, "name", "Vika")
-        .registerParameter(`Person`, "age", 1)
+//        .registerParameter(`Person`, "name", "Vika")
+//        .registerParameter(`Person`, "age", 1)
         .getInstance(`Person`);
     
     assertIs(person, `Person`);
@@ -204,8 +210,12 @@ shared void registryShouldCreateInstanceWithSomeSimpleParameters() {
 
 test
 shared void registryShouldThrowExceptinWhenThereAreNoSomeParameters() {
-    value registry = newRegistry { `Person` };
-    registry.registerParameter(`Person`, "age", 1);
+    value registry = newRegistry {
+        components = [`Person`];
+        parameters = [
+            [`Person`, "age", 1]
+        ];
+    };
     assertThatException(() => registry.getInstance(`Person`))
         .hasMessage("Registry.getInstance: can't createInstance for class <" +`Person`.string + ">");
 }
@@ -518,18 +528,20 @@ class FakeDecorator2() satisfies Service {
 tag("enhancer")
 test
 shared void registryShouldCreateInstanceWithGivenEnchancer() {
-    value registry = newRegistry {`DbService`, "users"};
-    value registryWithEnhancer = registry.registerEnhancer(`Service`, [`ServiceDbSchemaDecorator`]);
-    value service = registryWithEnhancer.getInstance(`Service`);
-    assertIs(service, `ServiceDbSchemaDecorator`);
-    assertEquals(service.connection, "users://users");
-}
+    value registry = newRegistry {
+        components = [`DbService`, "users"];
+        enchancers = [[`Service`, [`ServiceDbSchemaDecorator`]]];
+        };
+        value service = registry.getInstance(`Service`);
+        assertIs(service, `ServiceDbSchemaDecorator`);
+        assertEquals(service.connection, "users://users");
+    }
 
 tag("enhancer")
 test
 shared void registryShouldThrowExceptionWhenRegisterEnchancerWithWrongInterface() {
-    value registry = newRegistry {`Service`, "users"};
-    assertThatException(() => registry.registerEnhancer(`Service`, [`FakeDecorator`]))
+//    value registry = newRegistry { enchancers = [[`Service`, [`FakeDecorator`]]];};
+    assertThatException(() => newRegistry { enchancers = [[`Service`, [`FakeDecorator`]]];})
     .hasMessage("Enchancer class <" + `FakeDecorator`.string +
                 "> not compatible with origin class <" + `Service`.string +
                 ">: missed interfaces { " + `Service`.string + " }");
@@ -538,8 +550,8 @@ shared void registryShouldThrowExceptionWhenRegisterEnchancerWithWrongInterface(
 tag("enhancer")
 test
 shared void registryShouldThrowExceptionWhenRegisterEnchancerWithWrongInterface2() {
-    value registry = newRegistry {`DbService`, "users"};
-    assertThatException(() => registry.registerEnhancer(`Service`, [`FakeDecorator2`]))
+//    value registry = newRegistry {`DbService`, "users"};
+    assertThatException(() => newRegistry { enchancers = [[`Service`, [`FakeDecorator2`]]];})
     .hasMessage("Enhancer class <" + `FakeDecorator2`.string +
             "> must have at least one constructor parameter with <"
             + `Service`.string + "> or some of it interfaces {}");
@@ -550,7 +562,7 @@ test
 shared void registryShouldCreateInstanceWithTwoGivenEnchancers() {
     value registry = newRegistry {
         components = { DbService("users") };
-        enhancers = {
+        enchancers = {
             [`Service`, [ `ServiceDbCredetionalsDecorator`, `ServiceDbSchemaDecorator` ]]
         };
         parameters = {

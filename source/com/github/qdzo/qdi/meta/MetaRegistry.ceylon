@@ -12,10 +12,13 @@ import com.github.qdzo.qdi {
 "Class meta-information store.
 
  Gets classes and gather information from them:
- - satisfied interfaces
  - full class hierarchy (except Basic types)
- 
- Used as requirenemts(class) resolution engine."
+ - satisfied interfaces by that class hierarchy
+
+ Can suggest classes which fit requirements by
+ request (interfaces/intersection/union/abstract-types)
+
+ Used as requirements(class) resolution engine."
 shared class MetaRegistry {
 
     "Class -> ['extend classes', 'satisfied interfaces']"
@@ -70,26 +73,21 @@ shared class MetaRegistry {
         this.interfaceComponents = interfaceComponents;
     }
 
-    shared MetaRegistry patch(MetaRegistry metaRegistry) {
-        // TODO: Not complete yet. (Vitaly 21.08.2018)
-        return withState {
-            components = components.patch(metaRegistry.components); // rewrite clazz-info without risk.
-//            extendComponents = mergeMapsWith(extendComponents, metaRegistry.extendComponents, (a, b)=> a.union(b));
-//            interfaceComponents = interfaceComponents;
-            extendComponents = extendComponents.patch( map {
-                for (baseClazz->extendClazzez in metaRegistry.extendComponents)
-                if(exists clazzez = extendComponents[baseClazz])
-                then baseClazz -> clazzez.union(extendClazzez)
-                else baseClazz -> extendClazzez
-            });
-            interfaceComponents = interfaceComponents.patch( map {
-                for (iface->satisfiedClazzez in metaRegistry.interfaceComponents)
-                if(exists clazzez = interfaceComponents[iface])
-                then iface -> clazzez.union(satisfiedClazzez)
-                else iface -> satisfiedClazzez
-            });
-        };
-    }
+//    shared MetaRegistry patch(MetaRegistry metaRegistry) {
+//        return withState {
+//            components = components.patch(metaRegistry.components); // rewrite clazz-info without risk.
+//            extendComponents = mergeMapsWith<Class<>, Set<Class<>>> {
+//                first = extendComponents;
+//                second = metaRegistry.extendComponents;
+//                mergeFn = (a,  b) => a.union(b);
+//            };
+//            interfaceComponents = mergeMapsWith<Interface<>, Set<Class<>>> {
+//                first = interfaceComponents;
+//                second = metaRegistry.interfaceComponents;
+//                mergeFn = (a,  b) => a.union(b);
+//            };
+//        };
+//    }
 
 //        shared Boolean isRegistered<T>(Class<T> clazz) => componentsCache[clazz] exists;
     
@@ -178,14 +176,6 @@ shared class MetaRegistry {
                   .summarize(Entry.key,
                       (V? valA, T keyB -> V valB)
                        => if (exists valA) then mergeFn(valA, valB) else valB);
-
-//            given T satisfies Object => first.patch(
-//        map {
-//            for (kB -> valB in second)
-//            if(exists valA = second[kB])
-//            then kB -> mergeFn(valA, valB)
-//            else kB -> valB
-//        });
 
     "Helper function for debugging"
     shared void inspect() {
