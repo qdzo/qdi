@@ -1,13 +1,20 @@
 * DONE check for enchancer
   CLOSED: [2018-07-04 Wed 00:36]
-* TODO rename components to cache. and use components from metaregistry as components registry
-* TODO immutable register api
-* TODO extract interface Registry
+* DONE rename components to cache. and use components from metaregistry as components registry
+  CLOSED: [2018-08-22 ср 19:15]
+* DONE immutable register api
+  CLOSED: [2018-08-22 ср 19:15]
+* DONE extract interface Registry
+  CLOSED: [2018-08-22 ср 19:15]
 * TODO Organize modules 
 * TODO version -> 0.0.1
-* TODO more functional staff
+* DONE more functional staff
+  CLOSED: [2018-08-22 ср 19:16]
 * TODO write README
 * TODO Write doc
+* TODO split dependency graph definition and dependency reolution
+  - now them in one brittle and imperative code part
+** TODO extract dependency resolution to external function
 
 * CHANGES
 ** Remove support for Classes in registerEnhancer
@@ -15,3 +22,29 @@
      and this requires additional modifications of target class (default annotations).
    - If someone requests intersectionType and target is appropriate, but enhancer implement partial interfaces
    - It's not convenient to wrap only needed class (interface is more useful in this situation)
+
+
+instance requested
+get appropriate type
+resolve type dependency graph
+  get constructor open types
+  resolve constructor types
+  get appropriate types for them
+    get constructor open types
+    resolve constructor types
+    ...
+topological sort of dependency graph
+revert it
+resolve dependencies
+  resolve first dependency
+    is there are cached instance
+    is there are direct parameters
+    is wrapper needed
+      is wrapper need additional dependency
+  resolve second dependency
+    is there are cached instance
+    is there are direct parameters
+    is wrapper needed
+      is wrapper need additional dependency
+   ...
+return requested instance

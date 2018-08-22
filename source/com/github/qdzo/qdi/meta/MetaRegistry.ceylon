@@ -73,8 +73,7 @@ shared class MetaRegistry {
         this.interfaceComponents = interfaceComponents;
     }
 
-    shared MetaRegistry patch(MetaRegistry metaRegistry) {
-        return withState {
+    shared MetaRegistry patch(MetaRegistry metaRegistry) => withState {
             components = components.patch(metaRegistry.components); // rewrite clazz-info without risk.
             extendComponents = mergeMapsWith<Class<>, Set<Class<>>> {
                 first = extendComponents;
@@ -87,9 +86,8 @@ shared class MetaRegistry {
                 mergeFn = (a,  b) => a.union(b);
             };
         };
-    }
 
-//        shared Boolean isRegistered<T>(Class<T> clazz) => componentsCache[clazz] exists;
+    shared Boolean isRegistered<T>(Class<T> clazz) => components[clazz] exists;
     
     shared [Interface<>*] getClassInterfaces<T>(Class<T> clazz)
             => if(exists [_, ifaces] = components[clazz]) then ifaces.sequence() else [];
@@ -171,12 +169,6 @@ shared class MetaRegistry {
         };
     }
 
-    Map<T,V> mergeMapsWith<T,V>(Map<T,V> first, Map<T,V> second, V mergeFn(V a, V b)) given T satisfies Object
-            => first.chain(second)
-                  .summarize(Entry.key,
-                      (V? valA, T keyB -> V valB)
-                       => if (exists valA) then mergeFn(valA, valB) else valB);
-
     "Helper function for debugging"
     shared void inspect() {
         print("---------------- META-REGISTRY INSPECTION -----------------");
@@ -191,3 +183,10 @@ shared class MetaRegistry {
         print("------------------------------------------------------------");
     }
 }
+
+Map<T,V> mergeMapsWith<T,V>(Map<T,V> first, Map<T,V> second, V mergeFn(V a, V b)) given T satisfies Object
+        => first.chain(second)
+    .summarize(Entry.key,
+            (V? valA, T keyB -> V valB)
+    => if (exists valA) then mergeFn(valA, valB) else valB);
+

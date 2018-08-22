@@ -52,8 +52,7 @@ shared alias EnchancersDeclaration => [Interface<>, [Class<>+]];
  > This way give you flexibility of creating separated registries that shares some components.
 
  Registry has one possible internal mutation - caching instances.
- That cache also copied to new registries wich created with register methods.
- "
+ That cache also copied to new registries wich created with register methods."
 shared class ImmutableRegistry satisfies Registry {
 
     late MetaRegistry metaRegistry;
@@ -91,6 +90,7 @@ shared class ImmutableRegistry satisfies Registry {
         value classInstencePairs = components.collect(getClassInstancePair);
         this.componentsCache = map(classInstencePairs);
         this.metaRegistry = MetaRegistry(classInstencePairs*.key);
+
         this.parameters = map {
             for ([type, paramName, val] in parameters)
             [type, paramName]->val
@@ -101,7 +101,6 @@ shared class ImmutableRegistry satisfies Registry {
         }
         this.enhancerComponents = map {
             for ([iface, wrappers] in enhancers)
-            if (is Null checkError = checkEnchancers(iface, wrappers))
             iface->wrappers
         };
     }
@@ -335,19 +334,26 @@ class ChainedRegistry(Registry first, Registry second) satisfies Registry {
         }
     }
 
-    shared actual Registry patch(Registry registry)
-            => ChainedRegistry(this, registry);
+    patch(Registry registry) => ChainedRegistry(this, registry);
 }
 
 shared Registry newRegistry(
-        {Class<>|Object*} components = empty,
-        {[Class<>, String, Anything]*} parameters = empty,
-        {[Interface<>, [Class<>+]]*} enchancers = empty
-        ) => ImmutableRegistry {
+        {Component*} components = empty,
+        {ParameterForInjection*} parameters = empty,
+        {EnchancersDeclaration*} enchancers = empty) => ImmutableRegistry {
     components = components;
     parameters = parameters;
     enhancers = enchancers;
 };
+
+shared Registry components(Component* components)
+        => ImmutableRegistry { components = components; };
+
+shared Registry parameters(ParameterForInjection* parameters)
+        => ImmutableRegistry { parameters = parameters; };
+
+shared Registry enchancers(EnchancersDeclaration* enchancers)
+        => ImmutableRegistry { enhancers = enchancers; };
 
 Exception? checkEnhancerInterfaceCompatibility<Target, Wrapper>(
         Type<Target>->[Set<Class<>>, Set<Interface<>>] targetInfo,

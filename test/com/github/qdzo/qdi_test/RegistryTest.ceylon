@@ -1,6 +1,7 @@
 import ceylon.language.meta.model {
     Class,
-    Interface
+    Interface,
+    Type
 }
 import ceylon.logging {
     addLogWriter,
@@ -24,7 +25,9 @@ import com.github.qdzo.qdi {
 import com.github.qdzo.qdi.meta {
     describeClass,
     getClassHierarchyExceptBasicClasses,
-    getInterfaceHierarchySet
+    getInterfaceHierarchySet,
+    Parameter,
+    getDependencySortedList
 }
 beforeTestRun
 shared void setupLogger() {
@@ -92,6 +95,73 @@ test
 shared void getInterfaceHierarhy_SouldNotGetIndirectIntefacesDerivedFromBaseType() {
     value actual = getInterfaceHierarchySet(`ClazzABC2`);
     assertEquals(actual, emptySet);
+}
+
+shared {[Type<>, [Parameter*]]*} typeDependencyList => [
+    // basic types don't introspected
+    [`String`,[]],
+    [`Integer`,[]],
+    [`Float`,[]],
+    [`Boolean`,[]],
+    [`Character`,[]],
+    [`Basic`,[]],
+    [`Object`,[]],
+    [`Anything`, []],
+    // interfaces can't have dependencies
+    [`A`, []],
+    [`ABC`, []],
+    // class without dependencies
+    [`ClazzA`, []],
+    // class with two basic-types as dependencies
+    [`Person`, [
+        Parameter(`Person`, "name", `String`, false),
+        Parameter(`Person`, "age", `Integer`, false)
+    ]],
+    // class with one class-dependency
+    [`Box`, [Parameter(`Box`, "atom", `Atom`, false)]],
+    // deep nested dependencies
+    [`Matryoshka1`,
+        [
+            Parameter(`Matryoshka1`, "m2", `Matryoshka2`, false),
+            Parameter(`Matryoshka2`, "m31", `Matryoshka3`, false),
+            Parameter(`Matryoshka2`, "m32", `Matryoshka3`, false),
+            Parameter(`Matryoshka3`, "m01", `Matryoshka0`, false),
+            Parameter(`Matryoshka3`, "m02", `Matryoshka0`, false),
+            Parameter(`Matryoshka3`, "m03", `Matryoshka0`, false),
+            Parameter(`Matryoshka3`, "m01", `Matryoshka0`, false),
+            Parameter(`Matryoshka3`, "m02", `Matryoshka0`, false),
+            Parameter(`Matryoshka3`, "m03", `Matryoshka0`, false)
+        ]
+    ],
+    // class with interface as dependency
+    [`RuPostal`, [Parameter(`RuPostal`, "postman", `Postman`, false)]],
+    // class with default dependency value (for interface dep)
+    [`AsiaPostal`, [Parameter(`AsiaPostal`, "postman", `Postman`, true)]],
+    // class with one union-type dependency, which have self depnendency
+    [`Address`,
+        [
+            Parameter(`Address`, "street", `String|Street`, false),
+            Parameter(`Street`, "name", `String`, true)
+        ]
+    ],
+    // class with one intersection-type dependency
+    [`RuPostalStore`, [Parameter(`RuPostalStore`, "employee", `Postman&Operator`, false)]],
+    // generaic class with Type-parametrized nested dependencies
+    [`GenericTanker<Integer, Float>`,
+        [
+            Parameter(`GenericTanker<Integer, Float>`, "box1", `GenericBox<Integer>`, false),
+            Parameter(`GenericTanker<Integer, Float>`, "box2", `GenericBox<Float>`, false),
+            Parameter(`GenericBox<Integer>`, "t", `Integer`, false),
+            Parameter(`GenericBox<Float>`, "t", `Float`, false)
+        ]
+    ]
+
+] ;
+
+tag("x")
+test parameters(`value typeDependencyList`)
+shared void getDependencyGraphTest(Type<> t, [Parameter*] depsList) {
+    assertEquals(getDependencySortedList(t), depsList);
 }
 
 // ------------------ MAIN TESTS ------------------------
@@ -198,11 +268,7 @@ shared void registryShouldCreateInstanceWithSomeSimpleParameters() {
         ];
     };
 
-    value person = registry
-//        .registerParameter(`Person`, "name", "Vika")
-//        .registerParameter(`Person`, "age", 1)
-        .getInstance(`Person`);
-    
+    value person = registry.getInstance(`Person`);
     assertIs(person, `Person`);
     assertEquals(person.name, "Vika");
     assertEquals(person.age, 1);
@@ -279,7 +345,7 @@ shared void registryShouldReturnInstanceForCaseClasses() {
 
 // ============================ UNION TYPE ================================
 
-class Street() { }
+class Street(String name = "noname") { }
 class Address(String|Street street) { }
 
 test

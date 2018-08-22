@@ -13,7 +13,8 @@ import ceylon.language.meta.declaration {
 import ceylon.language.meta.model {
     Type,
     Class,
-    Interface
+    Interface,
+    UnionType
 }
 import ceylon.logging {
     Logger,
@@ -34,7 +35,63 @@ shared class Parameter(
         shared Boolean defaulted
         )  {
     string => "Parameter(targetClass=``targetClass``, name=``parameterName``, type=``parameterType``, defaulted=``defaulted``)";
+
+    shared actual Boolean equals(Object that) {
+        if (is Parameter that) {
+            return targetClass==that.targetClass &&
+                parameterName==that.parameterName &&
+                parameterType==that.parameterType &&
+                defaulted==that.defaulted;
+        }
+        else {
+            return false;
+        }
+    }
+    
+    shared actual Integer hash {
+        variable value hash = 1;
+        hash = 31*hash + targetClass.hash;
+        hash = 31*hash + parameterName.hash;
+        hash = 31*hash + parameterType.hash;
+        hash = 31*hash + defaulted.hash;
+        return hash;
+    }
+
 }
+
+"Assume that there are no cyclic dependencies in class.
+ WARN:  If there are - don't use this function."
+shared [Parameter*] getDependencySortedList<T>(Type<T> t) {
+    if(isBasicType(t)) {
+        return empty;
+    }
+    if(is UnionType<> t) {
+        return t.caseTypes.flatMap(getDependencySortedList).sequence();
+    }
+    if(is Class<> t) {
+        value params = resolveConstructorParameters(t);
+        return concatenate(
+            params,
+            *params.map(Parameter.parameterType).map(getDependencySortedList)
+        );
+    }
+    return empty;
+}
+
+//shared [<Parameter->Class<>>*] resolveDependencyGraph<T>(MetaRegistry registry, Class<T> clazz) {
+//    value params = resolveConstructorParameters(clazz);
+//    value paramTypes = params.map((param) => param -> registry.getAppropriateClassForType(param.parameterType));
+//    value resolvedParams = {
+//        for (param->types in paramTypes)
+////        if(nonempty deps = types.map((t) => t -> resolveDependencyGraph(registry, t)).find((t->deps) => !deps.empty))
+//        if(nonempty deps = { for (t in types) resolveDependencyGraph(registry, t) }.find((deps) => !deps.empty))
+//        param -> deps
+//    };
+//    if(resolvedParams.size < paramTypes.size) {
+//        return [];
+//    }
+//    return concatenate(resolvedParams, resolvedParams*.item);
+//}
 
 "Try get default-constructor declaration from class declaration,
  Collect parameter-list and resolve them (close type).

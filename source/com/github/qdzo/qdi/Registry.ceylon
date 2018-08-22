@@ -28,28 +28,4 @@ shared interface Registry {
     
     "Patch current registry with given and returns new-one - already patched"
     shared formal Registry patch(Registry registry);
-
-//	"Add new `class or instance` to registry and return that registry"
-//	shared formal Registry register<T>(Class<T>|Object classOrInstance);
-//
-//	"Add new enhancers for given interface"
-//    throws(`class Exception`, "when enhancer don't comforms to the rules")
-//	shared formal Registry registerEnhancer<T>(
-//			"Target interface to wrap with enhancers"
-//			Interface<T> target,
-//			"Ordered list of enhancers:
-//             - Enhancers need to be with the same interface.
-//             - Every next enhancer wraps previous."
-//			Enhancers enhancers);
-//
-//    "Add new direct parameter for given class"
-//    shared formal Registry registerParameter<T>(
-//            "Target class for injecing parameter"
-//            Class<T> target,
-//            "Constructor paramerter name"
-//            ParameterName param,
-//            "Value to inject.
-//             Values have highest priority for injection"
-//            ValueToInject val);
-
 }
