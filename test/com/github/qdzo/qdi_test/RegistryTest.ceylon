@@ -26,7 +26,7 @@ import com.github.qdzo.qdi.meta {
     describeClass,
     getClassHierarchyExceptBasicClasses,
     getInterfaceHierarchySet,
-    Parameter,
+    Dependency,
     getDependencySortedList
 }
 beforeTestRun
@@ -97,7 +97,7 @@ shared void getInterfaceHierarhy_SouldNotGetIndirectIntefacesDerivedFromBaseType
     assertEquals(actual, emptySet);
 }
 
-shared {[Type<>, [Parameter*]]*} typeDependencyList => [
+shared {[Type<>, [Dependency*]]*} typeDependencyList => [
     // basic types don't introspected
     [`String`,[]],
     [`Integer`,[]],
@@ -114,45 +114,45 @@ shared {[Type<>, [Parameter*]]*} typeDependencyList => [
     [`ClazzA`, []],
     // class with two basic-types as dependencies
     [`Person`, [
-        Parameter(`Person`, "name", `String`, false),
-        Parameter(`Person`, "age", `Integer`, false)
+        Dependency(`Person`, "name", `String`, false),
+        Dependency(`Person`, "age", `Integer`, false)
     ]],
     // class with one class-dependency
-    [`Box`, [Parameter(`Box`, "atom", `Atom`, false)]],
+    [`Box`, [Dependency(`Box`, "atom", `Atom`, false)]],
     // deep nested dependencies
     [`Matryoshka1`,
         [
-            Parameter(`Matryoshka1`, "m2", `Matryoshka2`, false),
-            Parameter(`Matryoshka2`, "m31", `Matryoshka3`, false),
-            Parameter(`Matryoshka2`, "m32", `Matryoshka3`, false),
-            Parameter(`Matryoshka3`, "m01", `Matryoshka0`, false),
-            Parameter(`Matryoshka3`, "m02", `Matryoshka0`, false),
-            Parameter(`Matryoshka3`, "m03", `Matryoshka0`, false),
-            Parameter(`Matryoshka3`, "m01", `Matryoshka0`, false),
-            Parameter(`Matryoshka3`, "m02", `Matryoshka0`, false),
-            Parameter(`Matryoshka3`, "m03", `Matryoshka0`, false)
+            Dependency(`Matryoshka1`, "m2", `Matryoshka2`, false),
+            Dependency(`Matryoshka2`, "m31", `Matryoshka3`, false),
+            Dependency(`Matryoshka2`, "m32", `Matryoshka3`, false),
+            Dependency(`Matryoshka3`, "m01", `Matryoshka0`, false),
+            Dependency(`Matryoshka3`, "m02", `Matryoshka0`, false),
+            Dependency(`Matryoshka3`, "m03", `Matryoshka0`, false),
+            Dependency(`Matryoshka3`, "m01", `Matryoshka0`, false),
+            Dependency(`Matryoshka3`, "m02", `Matryoshka0`, false),
+            Dependency(`Matryoshka3`, "m03", `Matryoshka0`, false)
         ]
     ],
     // class with interface as dependency
-    [`RuPostal`, [Parameter(`RuPostal`, "postman", `Postman`, false)]],
+    [`RuPostal`, [Dependency(`RuPostal`, "postman", `Postman`, false)]],
     // class with default dependency value (for interface dep)
-    [`AsiaPostal`, [Parameter(`AsiaPostal`, "postman", `Postman`, true)]],
+    [`AsiaPostal`, [Dependency(`AsiaPostal`, "postman", `Postman`, true)]],
     // class with one union-type dependency, which have self depnendency
     [`Address`,
         [
-            Parameter(`Address`, "street", `String|Street`, false),
-            Parameter(`Street`, "name", `String`, true)
+            Dependency(`Address`, "street", `String|Street`, false),
+            Dependency(`Street`, "name", `String`, true)
         ]
     ],
     // class with one intersection-type dependency
-    [`RuPostalStore`, [Parameter(`RuPostalStore`, "employee", `Postman&Operator`, false)]],
+    [`RuPostalStore`, [Dependency(`RuPostalStore`, "employee", `Postman&Operator`, false)]],
     // generaic class with Type-parametrized nested dependencies
     [`GenericTanker<Integer, Float>`,
         [
-            Parameter(`GenericTanker<Integer, Float>`, "box1", `GenericBox<Integer>`, false),
-            Parameter(`GenericTanker<Integer, Float>`, "box2", `GenericBox<Float>`, false),
-            Parameter(`GenericBox<Integer>`, "t", `Integer`, false),
-            Parameter(`GenericBox<Float>`, "t", `Float`, false)
+            Dependency(`GenericTanker<Integer, Float>`, "box1", `GenericBox<Integer>`, false),
+            Dependency(`GenericTanker<Integer, Float>`, "box2", `GenericBox<Float>`, false),
+            Dependency(`GenericBox<Integer>`, "t", `Integer`, false),
+            Dependency(`GenericBox<Float>`, "t", `Float`, false)
         ]
     ]
 
@@ -160,7 +160,7 @@ shared {[Type<>, [Parameter*]]*} typeDependencyList => [
 
 tag("x")
 test parameters(`value typeDependencyList`)
-shared void getDependencyGraphTest(Type<> t, [Parameter*] depsList) {
+shared void getDependencyGraphTest(Type<> t, [Dependency*] depsList) {
     assertEquals(getDependencySortedList(t), depsList);
 }
 

@@ -13,7 +13,7 @@ import com.github.qdzo.qdi.meta {
     MetaRegistry,
     resolveConstructorParameters,
     basicTypes,
-    Parameter,
+    Dependency,
     getInterfaceHierarchySet,
     getClassInstancePair
 }
@@ -188,7 +188,7 @@ shared class MergeableRegistry satisfies Registry {
         for (e in enhancers) {
             value params = resolveConstructorParameters(e);
             value [instanceParam, otherParams]
-                    = divideByFilter(params, (Parameter p) => p.parameterType.typeOf(instance));
+                    = divideByFilter(params, (Dependency p) => p.parameterType.typeOf(instance));
             value instantiatedOtherParams = instantiateParameters(e, otherParams);
 
             value fullParams = expand {
@@ -268,7 +268,7 @@ shared class MergeableRegistry satisfies Registry {
     }
 
     [<String->Anything>*]
-    instantiateParameters<T>(Class<T> t, {Parameter*} paramsTypes) {
+    instantiateParameters<T>(Class<T> t, {Dependency*} paramsTypes) {
         log.debug(() => "instantiateParameters: try to instantiate params: ``paramsTypes``");
         return paramsTypes
             .map(getRegisteredParameter)
@@ -276,7 +276,7 @@ shared class MergeableRegistry satisfies Registry {
             .coalesced.sequence();
     }
 
-    [Parameter, Anything] getRegisteredParameter(Parameter p) {
+    [Dependency, Anything] getRegisteredParameter(Dependency p) {
         if (exists paramVal = parameters[[p.targetClass, p.parameterName]]) {
             log.trace(() => "getRegisteredParameter: found registered parameter for : [``p.targetClass``,``p.parameterName``]");
             return [p, paramVal];
@@ -286,7 +286,7 @@ shared class MergeableRegistry satisfies Registry {
     }
 
     // pipe function
-    <String->Anything>? instantiateParameterIfNotExists([Parameter, Anything] parameterValuePair) {
+    <String->Anything>? instantiateParameterIfNotExists([Dependency, Anything] parameterValuePair) {
         value [parameter, val] = parameterValuePair;
         if (exists val) {
             return parameter.parameterName->val;
@@ -294,7 +294,7 @@ shared class MergeableRegistry satisfies Registry {
         return instantiateParameter(parameter);
     }
 
-    <String->Anything>? instantiateParameter(Parameter p) {
+    <String->Anything>? instantiateParameter(Dependency p) {
         log.trace(() => "instantiateParameter: try to instantiate parameter <``p.parameterName``> needed for class <``p.targetClass``>");
         value depInstance = tryFindAndGetApproproateInstance(p.parameterType);
         if (exists depInstance) {
@@ -436,7 +436,7 @@ Exception? checkEnchancers<T>(Class<T>|Interface<T> target, [Class<>+] wrappers)
         {Entity*} coll, Boolean pred(Entity p))
         => [ coll.filter(pred), coll.filter(not(pred)) ];
 
-String->T bindParameterWithValue<T>(T val)(Parameter param)
+String->T bindParameterWithValue<T>(T val)(Dependency param)
         => param.parameterName->val;
 
 T cast<T>(Anything val){

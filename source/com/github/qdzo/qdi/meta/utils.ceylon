@@ -23,21 +23,23 @@ import ceylon.logging {
 
 Logger log = logger(`module`);
 
-"Data class for storing constructor parameter info"
-shared class Parameter(
+"Data class for storing one dependency of targetClass."
+shared class Dependency(
         "Class, which constructor have this parameter"
         shared Class<> targetClass,
-        "parameter-name in constructor"
+        "parameter-name in targetClass constructor"
         shared String parameterName,
-        "parameter-type in constructor"
+        "parameter-type in targetClass constructor"
         shared Type<> parameterType,
         "Is parameter has default value in constructor"
         shared Boolean defaulted
         )  {
-    string => "Parameter(targetClass=``targetClass``, name=``parameterName``, type=``parameterType``, defaulted=``defaulted``)";
+    string => "Dependency(targetClass=``targetClass``, " +
+              " name=``parameterName``, type=``parameterType``,"+
+              " defaulted=``defaulted``)";
 
     shared actual Boolean equals(Object that) {
-        if (is Parameter that) {
+        if (is Dependency that) {
             return targetClass==that.targetClass &&
                 parameterName==that.parameterName &&
                 parameterType==that.parameterType &&
@@ -56,12 +58,40 @@ shared class Parameter(
         hash = 31*hash + defaulted.hash;
         return hash;
     }
+}
 
+"Class represents suggested class for given dependency"
+shared class SuggestedDependency(
+       "Requested dependency"
+        shared Dependency dependnecy,
+        "resolved parameter-type for dependency"
+        shared Class<> suggestedType) {
+
+    string => "ResolvedDependency(dependency=``dependnecy``, " +
+              "resolvedType=``suggestedType``)";
+
+    shared actual Boolean equals(Object that) {
+        if (is SuggestedDependency that) {
+            return dependnecy==that.dependnecy &&
+                suggestedType==that.suggestedType;
+        }
+        else {
+            return false;
+        }
+    }
+
+    shared actual Integer hash {
+        variable value hash = 1;
+        hash = 31*hash + dependnecy.hash;
+        hash = 31*hash + suggestedType.hash;
+        return hash;
+    }
 }
 
 "Assume that there are no cyclic dependencies in class.
- WARN:  If there are - don't use this function."
-shared [Parameter*] getDependencySortedList<T>(Type<T> t) {
+ WARN:  If there are - don't use this function.
+ Don't resolve interfaces, interseciton and basic types"
+shared [Dependency*] getDependencySortedList<T>(Type<T> t) {
     if(isBasicType(t)) {
         return empty;
     }
@@ -72,12 +102,15 @@ shared [Parameter*] getDependencySortedList<T>(Type<T> t) {
         value params = resolveConstructorParameters(t);
         return concatenate(
             params,
-            *params.map(Parameter.parameterType).map(getDependencySortedList)
+            *params.map(Dependency.parameterType).map(getDependencySortedList)
         );
     }
     return empty;
 }
 
+shared [SuggestedDependency*] resolveDependencyGraph<T>(MetaRegistry registry, Class<T> clazz) {
+        return nothing;
+}
 //shared [<Parameter->Class<>>*] resolveDependencyGraph<T>(MetaRegistry registry, Class<T> clazz) {
 //    value params = resolveConstructorParameters(clazz);
 //    value paramTypes = params.map((param) => param -> registry.getAppropriateClassForType(param.parameterType));
@@ -97,7 +130,7 @@ shared [Parameter*] getDependencySortedList<T>(Type<T> t) {
  Collect parameter-list and resolve them (close type).
 
  *The hardest part of resolving meta-model*"
-shared {Parameter*} resolveConstructorParameters<T>(Class<T> t) {
+shared {Dependency*} resolveConstructorParameters<T>(Class<T> t) {
     log.debug(() => "constructParameters: parameters for class <``t``>");
 
     assert(exists parameterDeclarations
@@ -106,7 +139,7 @@ shared {Parameter*} resolveConstructorParameters<T>(Class<T> t) {
     value parameters =  parameterDeclarations.collect((e) {
         log.trace(() => "constructParameters: parameter-declaration: <``e.openType``>");
         value closedType = resolveOpenType(t, e.openType);
-        return Parameter(t, e.name, closedType, e.defaulted);
+        return Dependency(t, e.name, closedType, e.defaulted);
     });
     log.debug(() => "constructParameters: constructed parameters: <``parameters``>");
     return parameters;
