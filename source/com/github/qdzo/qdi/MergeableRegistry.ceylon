@@ -53,7 +53,7 @@ shared alias EnchancersDeclaration => [Interface<>, [Class<>+]];
 
  Registry has one possible internal mutation - caching instances.
  That cache also copied to new registries wich created with register methods."
-shared class ImmutableRegistry satisfies Registry {
+shared class MergeableRegistry satisfies Registry {
 
     late MetaRegistry metaRegistry;
 
@@ -311,7 +311,7 @@ shared class ImmutableRegistry satisfies Registry {
     }
 
     shared actual Registry patch(Registry registry) {
-        if(is ImmutableRegistry registry) {
+        if(is MergeableRegistry registry) {
             return withState {
                 parameters = parameters.patch(registry.parameters);
                 metaRegistry = metaRegistry;
@@ -340,20 +340,20 @@ class ChainedRegistry(Registry first, Registry second) satisfies Registry {
 shared Registry newRegistry(
         {Component*} components = empty,
         {ParameterForInjection*} parameters = empty,
-        {EnchancersDeclaration*} enchancers = empty) => ImmutableRegistry {
+        {EnchancersDeclaration*} enchancers = empty) => MergeableRegistry {
     components = components;
     parameters = parameters;
     enhancers = enchancers;
 };
 
 shared Registry components(Component* components)
-        => ImmutableRegistry { components = components; };
+        => MergeableRegistry { components = components; };
 
 shared Registry parameters(ParameterForInjection* parameters)
-        => ImmutableRegistry { parameters = parameters; };
+        => MergeableRegistry { parameters = parameters; };
 
 shared Registry enchancers(EnchancersDeclaration* enchancers)
-        => ImmutableRegistry { enhancers = enchancers; };
+        => MergeableRegistry { enhancers = enchancers; };
 
 Exception? checkEnhancerInterfaceCompatibility<Target, Wrapper>(
         Type<Target>->[Set<Class<>>, Set<Interface<>>] targetInfo,
