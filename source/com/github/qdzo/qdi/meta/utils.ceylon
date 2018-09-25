@@ -88,6 +88,33 @@ shared class SuggestedDependency(
     }
 }
 
+"Class represents Dependency with instantiated instance"
+shared class ResolvedDependency(
+        "Requested dependency"
+        shared SuggestedDependency dependnecy,
+        "resolved parameter-type for dependency"
+        shared Object instance) {
+
+    string => "ResolvedDependency(dependency=``dependnecy``, " + "instance=``instance``)";
+
+    shared actual Boolean equals(Object that) {
+        if (is ResolvedDependency that) {
+            return dependnecy==that.dependnecy &&
+                instance==that.instance;
+        }
+        else {
+            return false;
+        }
+    }
+
+    shared actual Integer hash {
+        variable value hash = 1;
+        hash = 31*hash + dependnecy.hash;
+        hash = 31*hash + instance.hash;
+        return hash;
+    }
+}
+
 "Assume that there are no cyclic dependencies in class.
  WARN:  If there are - don't use this function.
  Don't resolve interfaces, interseciton and basic types"

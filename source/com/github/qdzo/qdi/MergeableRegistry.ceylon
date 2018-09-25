@@ -135,12 +135,12 @@ shared class MergeableRegistry satisfies Registry {
         try {
             log.debug(() => "tryToCreateInstance: class <``clazz``>");
             value paramsWithTypes = resolveConstructorParameters(clazz);
-            log.trace(() => "tryToCreateInstance: default constructor for " +
-            "type <``clazz``> has ``paramsWithTypes.size`` parameters");
+//            log.trace(() => "tryToCreateInstance: default constructor for " +
+//            "type <``clazz``> has ``paramsWithTypes.size`` parameters");
             value params = instantiateParameters(clazz, paramsWithTypes);
-            log.trace(() => "tryToCreateInstance: try to instantiate type <``clazz``> with params: <``params``>");
+//            log.trace(() => "tryToCreateInstance: try to instantiate type <``clazz``> with params: <``params``>");
             value instance = clazz.namedApply(params);
-            log.debug(() => "tryToCreateInstance: instantiated created for type <``clazz``>");
+//            log.debug(() => "tryToCreateInstance: instantiated created for type <``clazz``>");
             return instance;
         } catch (Exception th) {
             value errorMsg = "Can't create instantiated: ``th.message``";
@@ -154,11 +154,11 @@ shared class MergeableRegistry satisfies Registry {
     T|Exception wrapClassWithEnchancer<T>(Type<T> requestedType)([Class<T>, T|Exception] instantiated) {
         value [clazz, instanceOrException] = instantiated;
         if (is T instance = instanceOrException) {
-            log.debug(() => "wrapClassWithEnchancer: instance <``instance else "null"``> created for type <``clazz``>");
+//            log.debug(() => "wrapClassWithEnchancer: instance <``instance else "null"``> created for type <``clazz``>");
             value enhancers = enhancerComponents.getOrDefault(requestedType, empty);
 
             if (nonempty enhancers) {
-                log.debug(() => "wrapClassWithEnchancer: has registered enhancers for type <``requestedType``>: ``enhancers``");
+//                log.debug(() => "wrapClassWithEnchancer: has registered enhancers for type <``requestedType``>: ``enhancers``");
                 return wrapWithEnhancer(requestedType, enhancers, instance, clazz);
             }
             log.debug(() => "wrapClassWithEnchancer: hasn't registered enhancers for type <``requestedType``>:");
@@ -170,20 +170,21 @@ shared class MergeableRegistry satisfies Registry {
     // pipe function
     T|Exception wrapClassWithEnchancer2<T>(Type<T> requestedType)([Class<T>, T] instantiated) {
         value [clazz, instance] = instantiated;
-        log.debug(() => "wrapClassWithEnchancer: instance <``instance else "null"``> created for type <``clazz``>");
+//        log.debug(() => "wrapClassWithEnchancer: instance <``instance else "null"``> created for type <``clazz``>");
         value enhancers = enhancerComponents.getOrDefault(requestedType, empty);
         if (nonempty enhancers) {
-            log.debug(() => "wrapClassWithEnchancer: has registered enhancers for type <``requestedType``>: ``enhancers``");
+//            log.debug(() => "wrapClassWithEnchancer: has registered enhancers for type <``requestedType``>: ``enhancers``");
             return wrapWithEnhancer(requestedType, enhancers, instance, clazz);
         }
-        log.debug(() => "wrapClassWithEnchancer: hasn't registered enhancers for type <``requestedType``>:");
+//        log.debug(() => "wrapClassWithEnchancer: hasn't registered enhancers for type <``requestedType``>:");
         return instance;
     }
 
-    T|Exception wrapWithEnhancer<T>(Type<T> requestedType,
+    T|Exception wrapWithEnhancer<T>(
+            Type<T> requestedType,
             [Class<Anything, Nothing>+] enhancers,
             T instance,
-            Class<T, Nothing> clazz) {
+            Class<T, Nothing> suggestedClass) {
         variable T wrapped = instance;
         for (e in enhancers) {
             value params = resolveConstructorParameters(e);
@@ -196,15 +197,15 @@ shared class MergeableRegistry satisfies Registry {
                 instanceParam.map(bindParameterWithValue(wrapped))
             };
             assert (is T newWrapped = e.namedApply(fullParams));
-            log.trace(() => "wrapClassWithEnchancer: create wrapper <``e``> for type <``clazz``>");
+            log.trace(() => "wrapClassWithEnchancer: create wrapper <``e``> for type <``suggestedClass``>");
             wrapped = newWrapped;
         }
-        log.debug(() => "wrapClassWithEnchancer: instance of <``clazz``> successfully wrapped");
+        log.debug(() => "wrapClassWithEnchancer: instance of <``suggestedClass``> successfully wrapped");
         return wrapped;
     }
 
     "Main high-level function"
-    T? tryFindAndGetApproproateInstance<T>(Type<T> t) {
+    T? tryFindAndGetApproproateInstance<T>(MetaRegistry meraRegistry, Type<T> t) {
         log.debug(() => "tryFindAndGetApproproateInstance: for type <``t``> ");
 
         value appropriateClasses = expand {
@@ -229,12 +230,12 @@ shared class MergeableRegistry satisfies Registry {
 
 
     [Class<T>, T?] getFromCache<T>(Class<T> clazz) {
-        log.debug(() => "getFromCache: called with class <``clazz``>");
+//        log.debug(() => "getFromCache: called with class <``clazz``>");
         if (exists instance = componentsCache[clazz]) {
-            log.debug(() => "getFromCache: <``clazz``> has cached value");
+//            log.debug(() => "getFromCache: <``clazz``> has cached value");
             return [clazz, cast<T>(instance)];
         } else {
-            log.debug(() => "getFromCache: <``clazz``> hasn't cached value");
+//            log.debug(() => "getFromCache: <``clazz``> hasn't cached value");
             return [clazz, null];
         }
     }
@@ -261,7 +262,7 @@ shared class MergeableRegistry satisfies Registry {
     throws (`class Exception`, "When can't create instance.")
     shared actual T getInstance<T>(Type<T> t) {
         log.info(() => "getInstance: for type <``t``>");
-        if (exists i = tryFindAndGetApproproateInstance(t)) {
+        if (exists i = tryFindAndGetApproproateInstance(metaRegistry, t)) {
             return i;
         }
         throw Exception("Registry.getInstance: can't createInstance for class <``t``>");
@@ -281,7 +282,7 @@ shared class MergeableRegistry satisfies Registry {
             log.trace(() => "getRegisteredParameter: found registered parameter for : [``p.targetClass``,``p.parameterName``]");
             return [p, paramVal];
         }
-        log.trace(() => "getRegisteredParameter: there are no registered parameter for : [``p.targetClass``,``p.parameterName``]");
+//        log.trace(() => "getRegisteredParameter: there are no registered parameter for : [``p.targetClass``,``p.parameterName``]");
         return [p, null];
     }
 
@@ -296,14 +297,14 @@ shared class MergeableRegistry satisfies Registry {
 
     <String->Anything>? instantiateParameter(Dependency p) {
         log.trace(() => "instantiateParameter: try to instantiate parameter <``p.parameterName``> needed for class <``p.targetClass``>");
-        value depInstance = tryFindAndGetApproproateInstance(p.parameterType);
+        value depInstance = tryFindAndGetApproproateInstance(metaRegistry, p.parameterType);
         if (exists depInstance) {
-            log.trace(() => "instantiateParameter: parameter <``p.parameterName``> initialized");
+//            log.trace(() => "instantiateParameter: parameter <``p.parameterName``> initialized");
             return p.parameterName->depInstance;
         }
-        log.trace(() => "instantiateParameter: parameter <``p.parameterName``>(``p.targetClass``) NOT initialized.");
+//        log.trace(() => "instantiateParameter: parameter <``p.parameterName``>(``p.targetClass``) NOT initialized.");
         if (p.defaulted) {
-            log.trace(() => "instantiateParameter: parameter <``p.parameterName``>(``p.targetClass``) has default value in class.");
+//            log.trace(() => "instantiateParameter: parameter <``p.parameterName``>(``p.targetClass``) has default value in class.");
             return null;
         }
         throw Exception("Unresolved dependency <``p.parameterName``> " +
@@ -346,13 +347,13 @@ shared Registry newRegistry(
     enhancers = enchancers;
 };
 
-shared Registry components(Component* components)
+shared Registry withComponents(Component* components)
         => MergeableRegistry { components = components; };
 
-shared Registry parameters(ParameterForInjection* parameters)
+shared Registry withParameters(ParameterForInjection* parameters)
         => MergeableRegistry { parameters = parameters; };
 
-shared Registry enchancers(EnchancersDeclaration* enchancers)
+shared Registry withEnchancers(EnchancersDeclaration* enchancers)
         => MergeableRegistry { enhancers = enchancers; };
 
 Exception? checkEnhancerInterfaceCompatibility<Target, Wrapper>(
