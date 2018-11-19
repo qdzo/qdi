@@ -12,7 +12,7 @@ shared alias ParameterName => String;
 
 "Ordered list of enhancer declarations:
  - Enhancers need to be with the same interface.
- - They need to have at least one parameter with interface, that they wrappes
+ - They need to have at least one parameter with interface, that they wrap
  - Every next enhancer wraps previous."
 shared alias Enhancers => [Class<>+];
 
