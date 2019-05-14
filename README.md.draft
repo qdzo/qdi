@@ -1,4 +1,6 @@
-# QDI - Ceylon Dependency Injection for purists
+# QDI - Ceylon Dependency Injection for purists (Experimental)
+
+> WARN: Project is in early stage and API is subject to change. 
 
 <!-- markdown-toc start - Don't edit this section. Run M-x markdown-toc-refresh-toc -->
 **Table of Contents**
