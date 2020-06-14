@@ -119,8 +119,8 @@ You can use these methods at once - every registry is separated and creates it's
 
 ```ceylon
 shared void run() {
-    value testRegistry = commonRegistry.register(`FakePersonDao`).getInstance(`App`);
-    value prodRegistry = commonRegistry.register(`MongoPersonDao`).getInstance(`App`);
+    value testRegistry = commonRegistry.register(`FakePersonDao`);
+    value prodRegistry = commonRegistry.register(`MongoPersonDao`);
     value testApp = testRegistry.getInstance(`App`);
     value prodApp = prodRegistry.getInstance(`App`);
     testApp.start();
